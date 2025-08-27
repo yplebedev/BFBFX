@@ -53,6 +53,14 @@ uniform float p_phi<hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 10
 		#define SCVBAO_STEPS 7
 #endif
 
+// sacrifice MV usage for more spatial filtering
+// pair with disabling MVs in the framework shader, if the PR goes thru.
+// ALSO, since this denoises more aggresivly, there's very little point in having textured normals
+#ifndef SCAO_USE_MV
+	#define SCAO_USE_MV 0
+#endif
+
+
 #define SECTORS 32
 
 #define FAR_CLIP (RESHADE_DEPTH_LINEARIZATION_FAR_PLANE-1)
@@ -85,7 +93,7 @@ uniform int PREPROC_GUIDE <
 	ui_type = "radio";
 	ui_category = "Preprocessor Guide";
 	ui_category_closed = true;
-	ui_text = "The preprocessor for SCAO stores some pretty important quality/performance settings\n\n- SCVBAO_SLICES: Directly controlls noise levels. \nHigher values take significantly longer to render!\n\n- SCVBAO_STEPS: Defines how precisely the geometry is considered. \nHigher values improve shadowing and detail, and lower noise a little. \nLower values perform significantly better. \n\n\n Pro tip: use both the debug and default view to gaguge noise! You can find the frametime and FPS in the statistics tab on the top of the ReShade menu!";
+	ui_text = "\n\nThe preprocessor for SCAO stores some pretty important quality/performance settings\n\n- SCAO_USE_MV: defines if the shader tries to use temporal accumulation. \nThis isn't mandatory, and the end result with this on does look better, though if you experience ghosting keep this off. \n\n- SCVBAO_SLICES: Directly controlls noise levels. \nHigher values take significantly longer to render!\n\n- SCVBAO_STEPS: Defines how precisely the geometry is considered. \nHigher values improve shadowing and detail, and lower noise a little. \nLower values perform significantly better. \n\n\n Pro tip: use both the debug and default view to gaguge noise! You can find the frametime and FPS in the statistics tab on the top of the ReShade menu!";
 > = 0;
 
 /*
@@ -262,14 +270,14 @@ float4 autoF4(float x) {
 	return float4(x, x, x, 1.0);
 }
 
-// One denoiser pass, not up to date however.
+// One denoiser pass.
 float4 atrous(sampler input, float2 texcoord, float level) {
 	float4 noisy = tex2D(input, texcoord);
 	float3 normal = zfw::getNormal(texcoord);
 	float3 pos = zfw::uvToView(texcoord);
 	
 	float4 sum = 0.0;
-	float2 step = ReShade::PixelSize * 2;
+	float2 step = ReShade::PixelSize;
 	
 	
 	float cum_w = 0.0;
@@ -288,10 +296,12 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		dist2 = max(dot(t, t), 0.0);
 		float n_w = min(exp(-dist2 / n_phi), 1.0);
 		
+		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
 		dist2 = dot(t, t);
 		float p_w = min(exp(-dist2 / p_phi), 1.0);
+		p_w += 0.001;
 		
 		float weight = c_w * n_w * p_w;
 		sum += ctmp * weight * kernel[i];
@@ -407,9 +417,6 @@ float2 snapVPOS4(float2 vpos) {
 //                    VPOS (pixcoords), distance
 float getAdaptiveZ(inout float2 samplePos, float t) {
 	float res = 0;
-	// start by swapping at 4, then each double you can swap the res.
-	// though in movement it breaks down a bit, so the extra cost is fine.
-	
 	const uint drops = 3;
 	const float dropLength = 16.0;
 	
@@ -486,7 +493,7 @@ float gtao(float2 uv, float2 vpos) {
 	
 	float3 V = normalize(-positionVS);
 	float3 normalVS = zfw::getNormal(uv);
-	positionVS += 0.001 * normalVS * length(positionVS);
+	positionVS += 0.002 * normalVS;
 	
     float step = max(1.0, clamp(R / positionVS.z, SCVBAO_STEPS, R * 4) / (SCVBAO_STEPS + 1.0));
 		
@@ -547,14 +554,16 @@ float prepMinZ3 __PXSDECL__ {
 
 float4 main __PXSDECL__ {
 	float ao = gtao(uv, vpos.xy);
-	const float3 mv = zfw::getVelocity(uv);
-	const float prevZ = tex2D(sprevD, uv + mv.xy).x;
-	const float currZ = ReShade::GetLinearizedDepth(uv);
-	const float deltaZ = prevZ - currZ;
-	const float rejectZWeight = dot(deltaZ, deltaZ);
-	
-	
-	ao = lerp(ao, tex2D(sAO3, uv + mv.xy).x, historySize * mv.z * (mv.z < 0.4 ? 0.0 : 1.0) * (rejectZWeight > 0.0001 ? 0.0 : 1.0));
+	#if SCAO_USE_MV
+		const float3 mv = zfw::getVelocity(uv);
+		const float prevZ = tex2D(sprevD, uv + mv.xy).x;
+		const float currZ = ReShade::GetLinearizedDepth(uv);
+		const float deltaZ = prevZ - currZ;
+		const float rejectZWeight = dot(deltaZ, deltaZ);
+		
+		
+		ao = lerp(ao, tex2D(sAO3, uv + mv.xy).x, historySize * mv.z * (mv.z < 0.4 ? 0.0 : 1.0) * (rejectZWeight > 0.0001 ? 0.0 : 1.0));
+	#endif
 	return autoF4(ao);
 }
 
@@ -563,18 +572,28 @@ float4 save __PXSDECL__ {
 	return tex2Dfetch(sAO1, vpos.xy);
 }
 
-float4 denoise1 __PXSDECL__ {
+float4 denoiseMIN __PXSDECL__ {
 	return autoF4(atrous_low(sAO1, uv, 0).xxx);
 }
 
+float4 denoiseFULL1 __PXSDECL__ {
+	return autoF4(atrous(sAO1, uv, 0).xxx);
+}
+
+float4 denoiseFULL2 __PXSDECL__ {
+	return autoF4(atrous(sAO2, uv, 0).xxx);
+}
+
 float4 upscale __PXSDECL__ {
-	/*const float3 hdr = zfw::toneMapInverse(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb, 15.0);
-	if (debug) return bilateralUpscale(sAO2, lowN, highN, uv).xxxx;
-	float3 blended = bilateralUpscale(sAO2, lowN, highN, uv).xxx * hdr;
-	return autoF4(zfw::toneMap(lerp(hdr, blended, strength), 15.0));*/
 	const float3 hdr = zfw::toneMapInverse(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb, 15.0);
-	if (debug) return tex2D(sAO2, uv).xxxx;
-	float3 blended = tex2D(sAO2, uv).xxx * hdr;
+	#if SCAO_USE_MV
+		if (debug) return tex2D(sAO2, uv).xxxx;
+		float3 blended = tex2D(sAO2, uv).xxx * hdr;
+	#endif
+	#if !SCAO_USE_MV
+		if (debug) return tex2D(sAO1, uv).xxxx;
+		float3 blended = tex2D(sAO1, uv).xxx * hdr;
+	#endif
 	return autoF4(zfw::toneMap(lerp(hdr, blended, strength), 15.0));
 }
 
@@ -603,23 +622,40 @@ technique SCAO {
 		PixelShader = main;
 		RenderTarget = AO1;
 	}
-	pass Save {
-		VertexShader = PostProcessVS;
-		PixelShader = save;
-		RenderTarget = AO3;
-	}
-	pass Denoise {
-		VertexShader = PostProcessVS;
-		PixelShader = denoise1;
-		RenderTarget = AO2;
-	}
+	#if SCAO_USE_MV
+		pass Save {
+			VertexShader = PostProcessVS;
+			PixelShader = save;
+			RenderTarget = AO3;
+		}
+		pass Denoise {
+			VertexShader = PostProcessVS;
+			PixelShader = denoiseMIN;
+			RenderTarget = AO2;
+		}
+	#endif
+	#if !SCAO_USE_MV
+		pass DenoiseFULL1 {
+			VertexShader = PostProcessVS;
+			PixelShader = denoiseFULL1;
+			RenderTarget = AO2;
+		}
+		pass DenoiseFULL2 {
+			VertexShader = PostProcessVS;
+			PixelShader = denoiseFULL2;
+			RenderTarget = AO1;
+		}
+	#endif
+	// probs gonna be a misnomer for a while.
 	pass Upscale {
 		VertexShader = PostProcessVS;
 		PixelShader = upscale;
 	}
-	pass SaveZ {
-		VertexShader = PostProcessVS;
-		PixelShader = reprojD;
-		RenderTarget = prevD;
-	}
+	#if SCAO_USE_MV
+		pass SaveZ {
+			VertexShader = PostProcessVS;
+			PixelShader = reprojD;
+			RenderTarget = prevD;
+		}
+	#endif
 }

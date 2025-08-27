@@ -26,7 +26,6 @@ SOFTWARE.*/
 #ifndef PI
 	#define PI 3.14159265358979
 #endif
-
 texture bnt <source = "stbn.png";> {Width = 1024; Height = 1024; Format = R8; };
 sampler bn { Texture = bnt; };
 
@@ -35,6 +34,15 @@ sampler sIrradiance { Texture = irradiance; AddressU = BORDER; AddressV = BORDER
 
 texture GI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sGI { Texture = GI; AddressU = BORDER; AddressV = BORDER; };
+
+texture GI2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sGI2 { Texture = GI2; AddressU = BORDER; AddressV = BORDER; };
+
+texture tDN1 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sDN1 { Texture = tDN1; AddressU = BORDER; AddressV = BORDER; };
+
+texture tDN2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sDN2 { Texture = tDN2; AddressU = BORDER; AddressV = BORDER; };
 
 uniform int framecount < source = "framecount"; >;
 
@@ -157,7 +165,7 @@ namespace stepData {
 // This code assumes lambertian diffuse, but technically it could be extended to specular, or any other lobe. At the cost of nosie,
 // since IS is hard for bitmasks, you'll get horrible nosie for tight lobes.
 float3 calculateIL(uint prevBF, uint currBF, float3 positionVS, float3 nF, float3 nS, float3 delta, float2 uv, float2 uvF, float3 samplePosVS) {
-	float lengthS = dot(delta, delta) + exp2(-32); // this +2e-32 step might not make sense, but since we correct by 2D dist, this is actually more correct
+	float lengthS = dot(delta, delta) + exp2(-32); // this +2e-32 step might not make sense, but since we correct by 2D dist, this is not too horrible.
 	float dist = dot(samplePosVS, samplePosVS);
 	float3 di = tex2Dlod(sIrradiance, float4(uv, 0., 0.)).rgb; // theoretically the light, but BackBuf works fine, and is best we got.
 	
@@ -178,9 +186,8 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
     	float sampleLength = (t + i) / SCVBAO_STEPS;
     	sampleLength *= sampleLength; // sample more closer.
     	float2 sampleUV = rayDir * sampleLength + start / BUFFER_SCREEN_SIZE;
-        //float2 samplePos = clamp(start + t * rayDir, 1, BUFFER_SCREEN_SIZE - 2);
-        //samplePos = floor(samplePos) + 0.5;
-    	
+        sampleUV = (floor(sampleUV * BUFFER_SCREEN_SIZE) + 0.5) * BUFFER_PIXEL_SIZE;
+        
 		float2 range = saturate(sampleUV * sampleUV - sampleUV);
 		bool is_outside = range.x != -range.y; //and of course if we are not inside we are outside. 	
     	if (is_outside) break;
@@ -220,6 +227,7 @@ float4 gtao(float2 uv, float2 vpos) {
     //float step = max(1.0, R / positionVS.z / (SCVBAO_STEPS + 1.0));
 	
 	float3 il = 0;
+	[unroll]
 	for(float slice = 0.0; slice < 1.0; slice += 1.0 / SCVBAO_SLICES) {
 		float phi = PI * frac(slice + random.x);
 		float2 direction = float2(cos(phi), sin(phi));
@@ -253,27 +261,35 @@ float4 gtao(float2 uv, float2 vpos) {
 	return float4(il, ao);
 }
 
+
 float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	return float4(zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) + zfw::getAlbedo(uv) * tex2D(sGI, uv).rgb / (exp2(-32) + abs(dot(zfw::sampleNormal(uv, 0), -normalize(zfw::uvzToView(float3(uv, 0)))))), 1.);
 }
 
 float4 main(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	const float4 ao = gtao(uv, vpos.xy);
+	float4 ao = gtao(uv, vpos.xy);
+	float3 mv = zfw::getVelocity(uv);
+	
+	ao = lerp(ao, tex2Dfetch(sGI2, vpos.xy + (mv.xy * BUFFER_SCREEN_SIZE)), historySize * (mv.z < 0.4 ? 0.0 : 1.0));
 	return ao;
 }
 
-float4 denoise(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(ReShade::BackBuffer, uv, 0);
+float4 DN1(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return atrous(sGI, uv, 0);
 }
 
-float4 denoise1(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(ReShade::BackBuffer, uv, 1);
+float4 DN2(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return atrous(sDN1, uv, 1);
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	float4 gi = tex2D(sGI, uv);
+	float4 gi = tex2D(sDN2, uv);
 	if (debug) return zfw::toneMap((gi.rgb + gi.a * 0.001) * strength, 20.0);
 	return zfw::toneMap((gi.rgb + gi.a * 0.001) * strength * zfw::getAlbedo(uv) + zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
+}
+
+float4 saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return tex2Dfetch(sGI, vpos.xy);
 }
 
 technique SCGI {
@@ -287,13 +303,23 @@ technique SCGI {
 		PixelShader = main;
 		RenderTarget = GI;
 	}
+	pass Denoise {
+		VertexShader = PostProcessVS;
+		PixelShader = DN1;
+		RenderTarget = tDN1;
+	}
+	pass Denoise2 {
+		VertexShader = PostProcessVS;
+		PixelShader = DN2;
+		RenderTarget = tDN2;
+	}
 	pass Blend {
 		VertexShader = PostProcessVS;
 		PixelShader = blend;
 	}
-	/*
-	pass Denoise1 {
+	pass SaveForAccum {
 		VertexShader = PostProcessVS;
-		PixelShader = denoise1;
-	}*/
+		PixelShader = saveForAccum;
+		RenderTarget = GI2;
+	}
 }
