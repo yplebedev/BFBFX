@@ -57,7 +57,7 @@ uniform float p_phi<hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 10
 // pair with disabling MVs in the framework shader, if the PR goes thru.
 // ALSO, since this denoises more aggresivly, there's very little point in having textured normals
 #ifndef SCAO_USE_MV
-	#define SCAO_USE_MV 0
+	#define SCAO_USE_MV 1
 #endif
 
 
