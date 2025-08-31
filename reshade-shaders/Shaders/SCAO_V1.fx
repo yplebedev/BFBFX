@@ -270,6 +270,16 @@ float4 autoF4(float x) {
 	return float4(x, x, x, 1.0);
 }
 
+// From TurboGI (Zenteon)
+float4 getSH(float3 vec) {
+		return float4(0.282095, 0.488603f * vec.y,  0.488603f * vec.z, 0.488603f * vec.x);
+}
+
+float4 clampSH(float4 sh){
+	sh.x += saturate(length(sh.yzw) - sh.x);
+	return sh;
+}
+
 // One denoiser pass.
 float4 atrous(sampler input, float2 texcoord, float level) {
 	float4 noisy = tex2D(input, texcoord);
@@ -310,7 +320,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 	return sum/cum_w;
 }
 
-// Smaller kernel, shaper and faster
+// Smaller kernel, sharper and faster
 float4 atrous_low(sampler input, float2 texcoord, float level) {
 	float4 noisy = tex2D(input, texcoord);
 	float3 normal = zfw::getNormal(texcoord);
@@ -351,51 +361,6 @@ float4 atrous_low(sampler input, float2 texcoord, float level) {
 	return sum/cum_w;
 }
 
-// Upsamples 2x from depth and normals
-// Modified from papadanku.github.io
-// https://www.semanticscholar.org/paper/Multistep-joint-bilateral-depth-upsampling-Riemens-Gangwal/1ddf9ad017faf63b04778c1ddfc2330d64445da8
-float4 bilateralUpscale(
-   sampler image, // This should be 1/2 the size as guideHigh
-   sampler guideLow, // This should be 1/2 the size as guideHigh
-   sampler guideHigh, // This should be 2/1 the size as image and guideLow
-   float2 tex
-)
-{
-   // Initialize variables
-   float2 pixelSize = ldexp(fwidth(tex.xy), 1.0);
-   float4 guideHighSample = tex2D(guideHigh, tex);
-   float guideHighZ = ReShade::GetLinearizedDepth(tex);
-   float4 bilateralSum = 0.0;
-   float4 weightSum = 0.0;
-
-   [unroll]
-   for (int dx = -1; dx <= 1; dx++)
-   {
-      [unroll]
-      for (int dy = -1; dy <= 1; dy++)
-      {
-         // Calculate offset
-         float2 offset = float2(float(dx), float(dy));
-         float2 offsetTex = tex + (offset * pixelSize);
-
-         // Sample image and guide
-         float4 imageSample = tex2Dlod(image, float4(offsetTex, 0.0, 0.0));
-         float4 guideLowSample = tex2D(guideLow, offsetTex);
-         float guideLowZ = tex2D(sminZ, offsetTex).r;
-
-         // Calculate weight
-         float3 delta = guideLowSample.xyz - guideHighSample.xyz;
-         float deltaZ = guideLowZ - guideHighZ;
-         float dotDD = dot(delta, delta) * dot(deltaZ, deltaZ);
-         float weight = (dotDD > 0.0) ? 1.0 / dotDD : 1.0;
-
-         bilateralSum += (imageSample * weight);
-         weightSum += weight;
-      }
-   }
-
-   return bilateralSum / weightSum;
-}
  
 float2 snapVPOS(float2 vpos) {
 	return floor(vpos) + float2(0.5, 0.5);
