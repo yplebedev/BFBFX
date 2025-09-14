@@ -26,6 +26,10 @@ SOFTWARE.*/
 #ifndef PI
 	#define PI 3.14159265358979
 #endif
+
+#define HALF_BUFFER_WIDTH BUFFER_WIDTH / 2 
+#define HALF_BUFFER_HEIGHT BUFFER_WIDTH / 2
+
 texture bnt <source = "stbn.png";> {Width = 1024; Height = 1024; Format = R8; };
 sampler bn { Texture = bnt; };
 
@@ -38,24 +42,77 @@ sampler sGI { Texture = GI; AddressU = BORDER; AddressV = BORDER; };
 texture GI2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sGI2 { Texture = GI2; AddressU = BORDER; AddressV = BORDER; };
 
+texture tLuminance2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
+sampler sLuminance2 { Texture = tLuminance2; };
+
+texture tLuminance2swap { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
+sampler sLuminance2swap { Texture = tLuminance2swap; };
+
+texture tError { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
+sampler sError { Texture = tError; };
+
 texture tDN1 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sDN1 { Texture = tDN1; AddressU = BORDER; AddressV = BORDER; };
 
 texture tDN2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sDN2 { Texture = tDN2; AddressU = BORDER; AddressV = BORDER; };
 
+texture tPrevDepth { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sPrevDepth { Texture = tPrevDepth; AddressU = BORDER; AddressV = BORDER; };
+
+// Optimization is fun asf.
+texture minZ { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = R16; };
+sampler sminZ { Texture = minZ; 
+	MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
+	
+texture minZ2 { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = R16; };
+sampler sminZ2 { Texture = minZ2; 
+	MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
+texture minZ3 { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16; };
+sampler sminZ3 { Texture = minZ3; 
+	MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
+	
+	
+sampler lowN { Texture = zfw::tLowNormal;
+	MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
+sampler highN{ Texture = zfw::tNormal;
+	MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
+	
+texture prevD { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = R16; };
+sampler sprevD { Texture = prevD; 
+	MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
+
+
+
+
 uniform int framecount < source = "framecount"; >;
 
 uniform float historySize <ui_type = "slider"; ui_label = "Frame Blending"; ui_tooltip = "Affects the noise over update speed and ghosting ratios. This can be higher on higher FPS. 0 is no accumulation, and the closer to 1 the more previous results affect the image."; ui_min = 0.0; ui_max = 0.999;> = 0.8; 
 uniform bool debug <ui_label = "Debug view";> = false;
-uniform float strength <ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "How much GI affects the input colors. Use conservativly."; ui_min = 0.0; ui_max = 100.0;> = 1.0; 
+uniform float strength <ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "How much GI affects the input colors. Use conservativly."; ui_min = 0.0; ui_max = 100.0;> = 1.0;
+uniform float ambientBoost <ui_type = "slider"; ui_label = "Ambient intensity"; ui_min = 0.0; ui_max = 100.0;> = 1.0;
+uniform float3 ambientCol <ui_type = "color"; ui_label = "Ambient Color";>;
 uniform float power <ui_type = "slider"; ui_label = "Sampling bias power"; ui_tooltip = "A bias to sample closer-by stuff more. Increasing increases effective radius and occlusion from small objects."; ui_min = 1.0; ui_max = 3.0;> = 1.0; 
-//uniform float R <ui_type = "slider"; ui_label = "Radius"; ui_tooltip = "Increases the effect scale, but lowers effective quality and lowers cache coherency."; ui_min = 50.0; ui_max = 50000.0;> = 3000.0; 
 uniform float THICKNESS <ui_type = "slider"; ui_label = "Thickness"; ui_tooltip = "SCVBAO uses... you guessed it, VBAO. It allows for a thickness heuristic. Don't set this too high or low!"; ui_min = 0.0; ui_max = 4.0;> = 2.0; 
 
-uniform float c_phi <ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Color avoiding";> = 1.0;
+
+uniform bool displayError = false;
+
 uniform float n_phi <ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Normal avoiding";> = 1.0;
 uniform float p_phi <ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Depth avoiding";> = 1.0;
+uniform float v_phi <ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Variance avoiding";> = 1.0;
 
 uniform float kernel[25] <hidden = true;> = {
     1.0/256.0, 1.0/64.0,  3.0/128.0, 1.0/64.0,  1.0/256.0,
@@ -86,10 +143,25 @@ uniform float2 offset[25] <hidden = true;> = {
 
 #define FAR_CLIP (RESHADE_DEPTH_LINEARIZATION_FAR_PLANE-1)
 
+#define __PXSDECL__ (float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+
+
+bool getRejectCond(float3 mv, float depthDiff) {
+	return (mv.z < 0.4 ? 0.0 : 1.0) * (depthDiff > 0.000001 ? 0.0 : 1.0);
+}
+
+// NOTES FROM MARTY:
+// - Relax normal guide on really small depth delta -- ToDo?
+// - Account for normals when pos weighting -- borked?
 float4 atrous(sampler input, float2 texcoord, float level) {
+	float3 mv = zfw::getVelocity(texcoord);
+	float depthDelta = zfw::getDepth(texcoord) - tex2D(sPrevDepth, texcoord).x;
+	float depthDiff = dot(depthDelta, depthDelta);
+	bool reject = getRejectCond(mv, depthDelta);
+	
 	float4 noisy = tex2D(input, texcoord);
+	float variance = tex2Dlod(sError, float4(texcoord, 0.0, reject ? 1.0 : 16.0)).x;
 	float3 normal = zfw::getNormal(texcoord);
-	float depth = ReShade::GetLinearizedDepth(texcoord);
 	float3 pos = zfw::uvToView(texcoord);
 	
 	float4 sum = 0.0;
@@ -103,19 +175,20 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 
 		float4 ctmp = tex2Dlod(input, float4(uv, 0.0, 0.0));
 		float4 t = noisy - ctmp;
+
+		float dist2 = dot(t.rgb, t.rgb); // do NOT guide with variance!
+		float c_w = min(exp(-dist2 / (v_phi * variance + 0.01)), 1.0);
 		
-		float dist2 = dot(t, t);
-		float c_w = min(exp(-(dist2)/c_phi), 1.0);
+		float3 ptmp = zfw::uvToView(uv);
+		t = pos - ptmp;
+		t *= dot(normal, -normalize(pos)) * 100.0 / length(pos);
+		dist2 = dot(t, t);
+		float p_w = min(exp(-dist2 / p_phi), 1.0);
 		
 		float3 ntmp = zfw::getNormal(uv);
 		t = normal - ntmp;
 		dist2 = max(dot(t, t), 0.0);
 		float n_w = min(exp(-dist2 / n_phi), 1.0);
-		
-		float3 ptmp = zfw::uvToView(uv);
-		t = pos - ptmp;
-		dist2 = dot(t, t);
-		float p_w = min(exp(-dist2 / p_phi), 1.0);
 		
 		float weight = c_w * n_w * p_w;
 		sum += ctmp * weight * kernel[i];
@@ -124,13 +197,40 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 	return sum/cum_w;
 }
 
-// Modified from https://www.shadertoy.com/view/4djSRW
-// It's called once per pixel.
-float2 fastHash(float2 p) {
-	float3 p3 = float3(p * BUFFER_SCREEN_SIZE, framecount & 0xFFFF);
-	p3 = frac(p3 * float3(.1031, .1030, .0973));
-    p3 += dot(p3, p3.yzx + 33.33);
-    return frac((p3.xy + p3.yz) * p3.zx);
+// Gathers pixels around the sample point
+// By Zenteon
+float4 GatherLinDepth(float2 texcoord, sampler s) {
+    #if RESHADE_DEPTH_INPUT_IS_UPSIDE_DOWN
+    texcoord.y = 1.0 - texcoord.y;
+    #endif
+    #if RESHADE_DEPTH_INPUT_IS_MIRRORED
+            texcoord.x = 1.0 - texcoord.x;
+    #endif
+    texcoord.x /= RESHADE_DEPTH_INPUT_X_SCALE;
+    texcoord.y /= RESHADE_DEPTH_INPUT_Y_SCALE;
+    #if RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET
+    texcoord.x -= RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET * BUFFER_RCP_WIDTH;
+    #else
+    texcoord.x -= RESHADE_DEPTH_INPUT_X_OFFSET / 2.000000001;
+    #endif
+    #if RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET
+    texcoord.y += RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET * BUFFER_RCP_HEIGHT;
+    #else
+    texcoord.y += RESHADE_DEPTH_INPUT_Y_OFFSET / 2.000000001;
+    #endif
+    float4 depth = tex2DgatherR(s, texcoord) * RESHADE_DEPTH_MULTIPLIER;
+    
+    #if RESHADE_DEPTH_INPUT_IS_LOGARITHMIC
+    const float C = 0.01;
+    depth = (exp(depth * log(C + 1.0)) - 1.0) / C;
+    #endif
+    #if RESHADE_DEPTH_INPUT_IS_REVERSED
+    depth = 1.0 - depth;
+    #endif
+    const float N = 1.0;
+    depth /= RESHADE_DEPTH_LINEARIZATION_FAR_PLANE - depth * (RESHADE_DEPTH_LINEARIZATION_FAR_PLANE - N);
+    
+    return depth;
 }
 
 float2 getTemporalOffset() {
@@ -176,6 +276,48 @@ float3 calculateIL(uint prevBF, uint currBF, float3 positionVS, float3 nF, float
 	return deltaBF * rxW * reflW * di * dist / lengthS; // shadow * step->fragment * fragment->viewer * emmision * probability correction, adds noise far away * inverse-square
 }
 
+float2 snapVPOS(float2 vpos) {
+	return floor(vpos) + float2(0.5, 0.5);
+}
+
+float2 snapVPOS2(float2 vpos) {
+	return floor(vpos / 2.0) * 2.0 + float2(1.0, 1.0);
+}
+
+float2 snapVPOS3(float2 vpos) {
+	return floor(vpos / 4.0) * 4.0 + float2(2.0, 2.0);
+}
+
+float2 snapVPOS4(float2 vpos) {
+	return floor(vpos / 8.0) * 8.0 + float2(4.0, 4.0);
+}
+
+// Fetches lower res depth further away to save on fetch costs.
+//                    VPOS (pixcoords), distance
+float getAdaptiveZ(inout float2 samplePos, float t) {
+	float res = 0;
+	const uint drops = 3;
+	const float dropLength = 16.0;
+	
+	if (t < dropLength) {
+		samplePos = snapVPOS(samplePos);
+		res = ReShade::GetLinearizedDepth(samplePos * BUFFER_PIXEL_SIZE);
+	}
+	if (t >= dropLength && t < dropLength * 2.0 && drops > 0) {
+		samplePos = snapVPOS2(samplePos);
+		res = tex2Dfetch(sminZ, samplePos * 0.5).x;
+	}
+	if (t >= dropLength * 2.0 && t < dropLength * 4.0 && drops > 1) {
+		samplePos = snapVPOS3(samplePos);
+		res = tex2Dfetch(sminZ2, samplePos * 0.25).x;
+	}
+	if (t >= dropLength * 4.0 && drops > 2) {
+		samplePos = snapVPOS4(samplePos);
+		res = tex2Dfetch(sminZ3, samplePos * 0.125).x;
+	}
+	return res;
+}
+
 stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, float3 normal, uint bitfield) {
 	stepData::stepData data;
 	data.bitfield = bitfield;
@@ -192,7 +334,10 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
 		bool is_outside = range.x != -range.y; //and of course if we are not inside we are outside. 	
     	if (is_outside) break;
     	
-        float3 samplePosVS = zfw::uvToView(sampleUV);
+    	float screenDist = length((sampleUV - start) * BUFFER_SCREEN_SIZE);
+    	
+    	float2 sampleVS = sampleUV * BUFFER_SCREEN_SIZE;
+        float3 samplePosVS = zfw::uvzToView(sampleUV, getAdaptiveZ(sampleVS, sampleLength));
         float3 delta = samplePosVS - positionVS;
 	
 	    float2 fb = acos(float2(dot(normalize(delta), V), dot(normalize(delta + THICKNESS * normalize(samplePosVS)), V)));
@@ -206,13 +351,14 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
     	uint prevBF = data.bitfield;
     	data.bitfield |= ((1 << b) - 1) << a; 
     	
-    	data.lighting += calculateIL(prevBF, data.bitfield, V, normal, zfw::getNormal(sampleUV), delta, sampleUV, start / BUFFER_SCREEN_SIZE, samplePosVS) * sampleLength * sampleLength; // and debias by the distance^4
-    }
+		float3 il = calculateIL(prevBF, data.bitfield, V, normal, zfw::sampleNormal(sampleUV, 2.0), delta, sampleUV, start / BUFFER_SCREEN_SIZE, samplePosVS) * sampleLength * sampleLength; // and debias by the distance^4
+		data.lighting += il;
+	 }
     return data;
 }
 
 // RGB - inderect illum, A - ambient occlusion
-float4 gtao(float2 uv, float2 vpos) {
+float4 calcGI(float2 uv, float2 vpos) {
 	float2 random = stbn(vpos);
 	
 	float2 start = vpos;
@@ -222,7 +368,7 @@ float4 gtao(float2 uv, float2 vpos) {
 	
 	float3 V = normalize(-positionVS);
 	float3 normalVS = zfw::getNormal(uv);
-	positionVS += normalVS * 0.001;
+	positionVS += normalVS * 0.0001;
 
     //float step = max(1.0, R / positionVS.z / (SCVBAO_STEPS + 1.0));
 	
@@ -261,17 +407,46 @@ float4 gtao(float2 uv, float2 vpos) {
 	return float4(il, ao);
 }
 
+// Gathers & linearizes source depth, writes to lower res tex
+float prepMinZ __PXSDECL__ {
+	float4 z4 = GatherLinDepth(uv, ReShade::DepthBuffer);
+	return min(min(z4.x, z4.y), min(z4.z, z4.w));
+}
+
+// -||-
+float prepMinZ2 __PXSDECL__ {
+	float4 z4 = tex2DgatherR(sminZ, uv);
+	return min(min(z4.x, z4.y), min(z4.z, z4.w));
+}
+
+// -||-
+float prepMinZ3 __PXSDECL__ {
+	float4 z4 = tex2DgatherR(sminZ2, uv);
+	return min(min(z4.x, z4.y), min(z4.z, z4.w));
+}
 
 float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	return float4(zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) + zfw::getAlbedo(uv) * tex2D(sGI, uv).rgb / (exp2(-32) + abs(dot(zfw::sampleNormal(uv, 0), -normalize(zfw::uvzToView(float3(uv, 0)))))), 1.);
 }
 
-float4 main(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	float4 ao = gtao(uv, vpos.xy);
+void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luminanceSquared : SV_Target1, out float sigma2 : SV_Target2) {
+	GI = calcGI(uv, vpos.xy);
+	GI.rgb = (GI.rgb + GI.a * 0.0001 * ambientCol * ambientBoost);
 	float3 mv = zfw::getVelocity(uv);
 	
-	ao = lerp(ao, tex2Dfetch(sGI2, vpos.xy + (mv.xy * BUFFER_SCREEN_SIZE)), historySize * (mv.z < 0.4 ? 0.0 : 1.0));
-	return ao;
+	float depthDelta = zfw::getDepth(uv) - tex2D(sPrevDepth, uv).x;
+	float depthDiff = dot(depthDelta, depthDelta);
+	
+	float4 accumulatedGI = tex2Dfetch(sGI2, vpos.xy + (mv.xy * BUFFER_SCREEN_SIZE));
+	GI = lerp(GI, accumulatedGI, historySize * getRejectCond(mv, depthDiff));
+	
+	float luminance = dot(GI.rgb, float3(0.2126, 0.7152, 0.0722));
+	luminanceSquared = luminance * luminance;
+	float accumulatedLuminanceSquared = tex2Dfetch(sLuminance2swap, vpos.xy + (mv.xy * BUFFER_SCREEN_SIZE)).r;
+	luminanceSquared = lerp(luminanceSquared, accumulatedLuminanceSquared, historySize * getRejectCond(mv, depthDiff));
+	
+	sigma2 = luminanceSquared - (luminance * luminance);
+	GI.a = sigma2;
 }
 
 float4 DN1(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
@@ -282,17 +457,47 @@ float4 DN2(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	return atrous(sDN1, uv, 1);
 }
 
-float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	float4 gi = tex2D(sDN2, uv);
-	if (debug) return zfw::toneMap((gi.rgb + gi.a * 0.001) * strength, 20.0);
-	return zfw::toneMap((gi.rgb + gi.a * 0.001) * strength * zfw::getAlbedo(uv) + zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
+float4 DN3(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return atrous(sDN2, uv, 2);
 }
 
-float4 saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return tex2Dfetch(sGI, vpos.xy);
+float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return atrous(sDN1, uv, 3);
+}
+
+float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	float4 gi = tex2D(sDN2, uv);
+	if (debug) return zfw::toneMap(gi.rgb * strength, 20.0);
+	if (displayError) return tex2Dfetch(sError, vpos.xy).xxx * 20.0;
+	return zfw::toneMap(gi.rgb * strength * zfw::getAlbedo(uv) + zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
+}
+
+void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1/*, out float error : SV_Target2*/) {
+	GI = tex2Dfetch(sGI, vpos.xy);
+	luma2 = tex2Dfetch(sLuminance2, vpos.xy).r;
+	//error = tex2Dfetch(sError, vpos.xy).r;
+}
+
+float saveForReject(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return zfw::getDepth(uv);
 }
 
 technique SCGI {
+	pass PrepZ {
+		VertexShader = PostProcessVS;
+		PixelShader = prepMinZ;
+		RenderTarget = minZ;
+	}
+	pass Prepz2 {
+		VertexShader = PostProcessVS;
+		PixelShader = prepMinZ2;
+		RenderTarget = minZ2;
+	}
+	pass Prepz3 {
+		VertexShader = PostProcessVS;
+		PixelShader = prepMinZ3;
+		RenderTarget = minZ3;
+	}
 	pass Save {
 		VertexShader = PostProcessVS;
 		PixelShader = save;
@@ -301,7 +506,9 @@ technique SCGI {
 	pass GI { 
 		VertexShader = PostProcessVS;
 		PixelShader = main;
-		RenderTarget = GI;
+		RenderTarget0 = GI;
+		RenderTarget1 = tLuminance2; 
+		RenderTarget2 = tError;
 	}
 	pass Denoise {
 		VertexShader = PostProcessVS;
@@ -313,6 +520,16 @@ technique SCGI {
 		PixelShader = DN2;
 		RenderTarget = tDN2;
 	}
+	pass Denoise3 {
+		VertexShader = PostProcessVS;
+		PixelShader = DN3;
+		RenderTarget = tDN1;
+	}
+	pass Denoise3 {
+		VertexShader = PostProcessVS;
+		PixelShader = DN4;
+		RenderTarget = tDN2;
+	}
 	pass Blend {
 		VertexShader = PostProcessVS;
 		PixelShader = blend;
@@ -320,6 +537,13 @@ technique SCGI {
 	pass SaveForAccum {
 		VertexShader = PostProcessVS;
 		PixelShader = saveForAccum;
-		RenderTarget = GI2;
+		RenderTarget0 = GI2;
+		RenderTarget1 = tLuminance2swap;
+		//RenderTarget2 = tErrorSwap;
+	}
+	pass SaveDepth {
+		VertexShader = PostProcessVS;
+		PixelShader = saveForReject;
+		RenderTarget = tPrevDepth;
 	}
 }
