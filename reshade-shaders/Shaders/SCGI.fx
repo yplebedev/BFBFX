@@ -27,9 +27,6 @@ SOFTWARE.*/
 	#define PI 3.14159265358979
 #endif
 
-#define HALF_BUFFER_WIDTH BUFFER_WIDTH / 2 
-#define HALF_BUFFER_HEIGHT BUFFER_WIDTH / 2
-
 texture bnt <source = "stbn.png";> {Width = 1024; Height = 1024; Format = R8; };
 sampler bn { Texture = bnt; };
 
@@ -57,9 +54,6 @@ sampler sDN1 { Texture = tDN1; AddressU = BORDER; AddressV = BORDER; };
 texture tDN2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sDN2 { Texture = tDN2; AddressU = BORDER; AddressV = BORDER; };
 
-texture tPrevDepth { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sPrevDepth { Texture = tPrevDepth; AddressU = BORDER; AddressV = BORDER; };
-
 // Optimization is fun asf.
 texture minZ { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = R16; };
 sampler sminZ { Texture = minZ; 
@@ -78,22 +72,17 @@ sampler sminZ3 { Texture = minZ3;
 	MinFilter = POINT;
 	MipFilter = POINT; };
 	
-	
-sampler lowN { Texture = zfw::tLowNormal;
-	MagFilter = POINT;
-	MinFilter = POINT;
-	MipFilter = POINT; };
-sampler highN{ Texture = zfw::tNormal;
-	MagFilter = POINT;
-	MinFilter = POINT;
-	MipFilter = POINT; };
-	
-texture prevD { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = R16; };
-sampler sprevD { Texture = prevD; 
+texture tPrevD { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16; };
+sampler sPrevD { Texture = tPrevD; 
 	MagFilter = POINT;
 	MinFilter = POINT;
 	MipFilter = POINT; };
 
+texture tPrevN { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sPrevN { Texture = tPrevN; 
+	MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
 
 
 
@@ -101,18 +90,18 @@ uniform int framecount < source = "framecount"; >;
 
 uniform float historySize <ui_type = "slider"; ui_label = "Frame Blending"; ui_tooltip = "Affects the noise over update speed and ghosting ratios. This can be higher on higher FPS. 0 is no accumulation, and the closer to 1 the more previous results affect the image."; ui_min = 0.0; ui_max = 0.999;> = 0.8; 
 uniform bool debug <ui_label = "Debug view";> = false;
-uniform float strength <ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "How much GI affects the input colors. Use conservativly."; ui_min = 0.0; ui_max = 100.0;> = 1.0;
-uniform float ambientBoost <ui_type = "slider"; ui_label = "Ambient intensity"; ui_min = 0.0; ui_max = 100.0;> = 1.0;
-uniform float3 ambientCol <ui_type = "color"; ui_label = "Ambient Color";>;
-uniform float power <ui_type = "slider"; ui_label = "Sampling bias power"; ui_tooltip = "A bias to sample closer-by stuff more. Increasing increases effective radius and occlusion from small objects."; ui_min = 1.0; ui_max = 3.0;> = 1.0; 
-uniform float THICKNESS <ui_type = "slider"; ui_label = "Thickness"; ui_tooltip = "SCVBAO uses... you guessed it, VBAO. It allows for a thickness heuristic. Don't set this too high or low!"; ui_min = 0.0; ui_max = 4.0;> = 2.0; 
+uniform float strength <hidden = true; ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "How much GI affects the input colors. Use conservativly."; ui_min = 0.0; ui_max = 100.0;> = 20.0;
+uniform float reflBoost <ui_type = "slider"; ui_max = 4.0; ui_min = 0.001;> = 1.0;
+uniform float ambientBoost <ui_type = "slider"; ui_label = "Ambient intensity"; ui_min = 0.0; ui_max = 10.0;> = 1.0;
+uniform float3 ambientCol <ui_type = "color"; ui_label = "Ambient Color";> = 1.0;
+uniform float THICKNESS <ui_type = "slider"; ui_label = "Thickness"; ui_tooltip = "SCGI uses a thickness heuristic. Don't set this too high or low!"; ui_min = 2.0; ui_max = 16.0;> = 2.0; 
 
 
-uniform bool displayError = false;
+uniform bool displayError<hidden = true;> = false;
 
-uniform float n_phi <ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Normal avoiding";> = 1.0;
-uniform float p_phi <ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Depth avoiding";> = 1.0;
-uniform float v_phi <ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Variance avoiding";> = 1.0;
+uniform float n_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Normal avoiding";> = 0.1;
+uniform float p_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Depth avoiding";> = 1.0;
+uniform float v_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Variance avoiding";> = 1.0;
 
 uniform float kernel[25] <hidden = true;> = {
     1.0/256.0, 1.0/64.0,  3.0/128.0, 1.0/64.0,  1.0/256.0,
@@ -129,25 +118,23 @@ uniform float2 offset[25] <hidden = true;> = {
     float2(-2.0,  2.0), float2(-1.0,  2.0), float2(0.0,  2.0), float2(1.0,  2.0), float2(2.0,  2.0)
 };
 
-#ifndef SCVBAO_SLICES
-	#define SCVBAO_SLICES 1
-#endif
 
-#ifndef SCVBAO_STEPS
-		#define SCVBAO_STEPS 8
-#endif
+uniform int scgi_slices <ui_type = "slider"; ui_label = "Rays"; ui_tooltip = "How many directions per pixel to consider. Lower values are faster, but more noisy. \n\nPerformance impact: EXTREME!"; ui_min = 1; ui_max = 16;> = 1;
+
+uniform int scgi_steps <ui_type = "slider"; ui_label = "Steps per Ray"; ui_tooltip = "How many times to consider the geometry per ray. Higher values increase precision and quality, but slow down the effect. \n\nPerformance impact: High"; ui_min = 2; ui_max = 32;> = 8;
 
 #define SECTORS 32
-
-//#define R_MAX_CLAMP 5000000000
 
 #define FAR_CLIP (RESHADE_DEPTH_LINEARIZATION_FAR_PLANE-1)
 
 #define __PXSDECL__ (float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 
-
-bool getRejectCond(float3 mv, float depthDiff) {
-	return (mv.z < 0.4 ? 0.0 : 1.0) * (depthDiff > 0.000001 ? 0.0 : 1.0);
+// high value == safe
+float getRejectCond(float3 mv, float depthDiff, float nDiff, float2 uv) {
+	float2 prevUV = uv-mv.xy;
+	float2 range = saturate(prevUV * prevUV - prevUV);
+	bool is_outside = range.x != -range.y; //and of course if we are not inside we are outside. 	
+	return !is_outside && mv.z > 0.8 && depthDiff < 0.1 * pow(nDiff, 3.0);
 }
 
 // NOTES FROM MARTY:
@@ -155,12 +142,16 @@ bool getRejectCond(float3 mv, float depthDiff) {
 // - Account for normals when pos weighting -- borked?
 float4 atrous(sampler input, float2 texcoord, float level) {
 	float3 mv = zfw::getVelocity(texcoord);
-	float depthDelta = zfw::getDepth(texcoord) - tex2D(sPrevDepth, texcoord).x;
-	float depthDiff = dot(depthDelta, depthDelta);
-	bool reject = getRejectCond(mv, depthDelta);
+	
+	float depthDelta = zfw::getDepth(texcoord - mv.xy) - tex2D(sPrevD, texcoord).x;
+	float depthDiff = max(abs(depthDelta), 0.0);
+	
+	float nDiff = dot(zfw::getNormal(texcoord - mv.xy), tex2D(sPrevN, texcoord).xyz);
+	
+	float reject = getRejectCond(mv, depthDelta, nDiff, texcoord);
 	
 	float4 noisy = tex2D(input, texcoord);
-	float variance = tex2Dlod(sError, float4(texcoord, 0.0, reject ? 1.0 : 16.0)).x;
+	float variance = tex2Dlod(input, float4(texcoord, 0.0, reject < 0.5 ? 16.0 : 1.0)).w;
 	float3 normal = zfw::getNormal(texcoord);
 	float3 pos = zfw::uvToView(texcoord);
 	
@@ -181,7 +172,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
-		t *= dot(normal, -normalize(pos)) * 100.0 / length(pos);
+		t *= dot(normal, -normalize(pos));
 		dist2 = dot(t, t);
 		float p_w = min(exp(-dist2 / p_phi), 1.0);
 		
@@ -323,9 +314,8 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
 	data.bitfield = bitfield;
 	data.lighting = 0.0;
 	
-	[loop]
-    for (uint i = 0; i < SCVBAO_STEPS; i++) {
-    	float sampleLength = (t + i) / SCVBAO_STEPS;
+    for (uint i = 0; i < scgi_steps; i++) {
+    	float sampleLength = (t + i) / scgi_steps;
     	sampleLength *= sampleLength; // sample more closer.
     	float2 sampleUV = rayDir * sampleLength + start / BUFFER_SCREEN_SIZE;
         sampleUV = (floor(sampleUV * BUFFER_SCREEN_SIZE) + 0.5) * BUFFER_PIXEL_SIZE;
@@ -343,7 +333,6 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
 	    float2 fb = acos(float2(dot(normalize(delta), V), dot(normalize(delta + THICKNESS * normalize(samplePosVS)), V)));
 	    fb = saturate(((samplingDirection * -fb) - N + PI/2) / PI);
 	    fb = fb.x > fb.y ? fb.yx : fb;
-	    //fb = smoothstep(0., 1., fb); // cosine lobe for AO. look: cdf.
 	    
    	 uint a = round(fb.x * SECTORS);
     	uint b = round((fb.y - fb.x) * SECTORS);
@@ -351,7 +340,7 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
     	uint prevBF = data.bitfield;
     	data.bitfield |= ((1 << b) - 1) << a; 
     	
-		float3 il = calculateIL(prevBF, data.bitfield, V, normal, zfw::sampleNormal(sampleUV, 2.0), delta, sampleUV, start / BUFFER_SCREEN_SIZE, samplePosVS) * sampleLength * sampleLength; // and debias by the distance^4
+		float3 il = calculateIL(prevBF, data.bitfield, V, normal, zfw::getNormal(sampleUV), delta, sampleUV, start / BUFFER_SCREEN_SIZE, samplePosVS) * sampleLength * sampleLength; // and debias by the distance^4
 		data.lighting += il;
 	 }
     return data;
@@ -373,8 +362,7 @@ float4 calcGI(float2 uv, float2 vpos) {
     //float step = max(1.0, R / positionVS.z / (SCVBAO_STEPS + 1.0));
 	
 	float3 il = 0;
-	[unroll]
-	for(float slice = 0.0; slice < 1.0; slice += 1.0 / SCVBAO_SLICES) {
+	for(float slice = 0.0; slice < 1.0; slice += 1.0 / scgi_slices) {
 		float phi = PI * frac(slice + random.x);
 		float2 direction = float2(cos(phi), sin(phi));
 		
@@ -390,20 +378,21 @@ float4 calcGI(float2 uv, float2 vpos) {
 		uint aoBF = 0;
 		float offset = random.y;
 		
-		stepData::stepData dir1 = sliceSteps(positionVS, V, start, direction, offset, random.y, 1, N, normalVS, aoBF);
+		// no need for random here
+		stepData::stepData dir1 = sliceSteps(positionVS, V, start, direction, offset, 0.0, 1, N, normalVS, aoBF);
 		aoBF = stepData::getBitfield(dir1);
 		il += stepData::getLighting(dir1);
 		
-		stepData::stepData dir2 = sliceSteps(positionVS, V, start, -direction, offset, random.y, -1, N, normalVS, aoBF);
+		stepData::stepData dir2 = sliceSteps(positionVS, V, start, -direction, offset, 0.0, -1, N, normalVS, aoBF);
 		aoBF = stepData::getBitfield(dir2);
 		il += stepData::getLighting(dir2);
 
 		ao += float(countbits(aoBF));
 	}
-	ao = 1.0 - ao / (float(SECTORS) * SCVBAO_SLICES);
+	ao = 1.0 - ao / (float(SECTORS) * scgi_slices);
 	ao = positionVS.z > FAR_CLIP || ao < -0.001 ? 1.0 : ao;
 	
-	il /= SCVBAO_SLICES;
+	il /= scgi_slices;
 	return float4(il, ao);
 }
 
@@ -426,7 +415,10 @@ float prepMinZ3 __PXSDECL__ {
 }
 
 float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return float4(zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) + zfw::getAlbedo(uv) * tex2D(sGI, uv).rgb / (exp2(-32) + abs(dot(zfw::sampleNormal(uv, 0), -normalize(zfw::uvzToView(float3(uv, 0)))))), 1.);
+	return float4(
+		zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
+		+ zfw::getAlbedo(uv) * tex2D(sGI, uv).rgb / (exp2(-32) + abs(dot(zfw::sampleNormal(uv, 0), -normalize(zfw::uvzToView(float3(uv, 0)))))),
+	1.);
 }
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luminanceSquared : SV_Target1, out float sigma2 : SV_Target2) {
@@ -434,16 +426,18 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Ta
 	GI.rgb = (GI.rgb + GI.a * 0.0001 * ambientCol * ambientBoost);
 	float3 mv = zfw::getVelocity(uv);
 	
-	float depthDelta = zfw::getDepth(uv) - tex2D(sPrevDepth, uv).x;
-	float depthDiff = dot(depthDelta, depthDelta);
+	float depthDelta = zfw::getDepth(uv - mv.xy) - tex2D(sPrevD, uv).x;
+	float depthDiff = abs(depthDelta);
 	
-	float4 accumulatedGI = tex2Dfetch(sGI2, vpos.xy + (mv.xy * BUFFER_SCREEN_SIZE));
-	GI = lerp(GI, accumulatedGI, historySize * getRejectCond(mv, depthDiff));
+	float nDiff = dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz);
+	
+	float4 accumulatedGI = tex2D(sGI2, uv + mv.xy);
+	GI = lerp(GI, accumulatedGI, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
 	
 	float luminance = dot(GI.rgb, float3(0.2126, 0.7152, 0.0722));
 	luminanceSquared = luminance * luminance;
-	float accumulatedLuminanceSquared = tex2Dfetch(sLuminance2swap, vpos.xy + (mv.xy * BUFFER_SCREEN_SIZE)).r;
-	luminanceSquared = lerp(luminanceSquared, accumulatedLuminanceSquared, historySize * getRejectCond(mv, depthDiff));
+	float accumulatedLuminanceSquared = tex2D(sLuminance2swap, uv + mv.xy).r;
+	luminanceSquared = lerp(luminanceSquared, accumulatedLuminanceSquared, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
 	
 	sigma2 = luminanceSquared - (luminance * luminance);
 	GI.a = sigma2;
@@ -466,20 +460,23 @@ float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	float4 gi = tex2D(sDN2, uv);
+	float4 gi = tex2D(sGI, uv) * reflBoost;
 	if (debug) return zfw::toneMap(gi.rgb * strength, 20.0);
 	if (displayError) return tex2Dfetch(sError, vpos.xy).xxx * 20.0;
 	return zfw::toneMap(gi.rgb * strength * zfw::getAlbedo(uv) + zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
 }
 
-void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1/*, out float error : SV_Target2*/) {
+void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1) {
 	GI = tex2Dfetch(sGI, vpos.xy);
 	luma2 = tex2Dfetch(sLuminance2, vpos.xy).r;
-	//error = tex2Dfetch(sError, vpos.xy).r;
 }
 
-float saveForReject(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+float saveForRejectZ(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	return zfw::getDepth(uv);
+}
+
+float3 saveForRejectN(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return zfw::getNormal(uv);
 }
 
 technique SCGI {
@@ -525,7 +522,7 @@ technique SCGI {
 		PixelShader = DN3;
 		RenderTarget = tDN1;
 	}
-	pass Denoise3 {
+	pass Denoise4 {
 		VertexShader = PostProcessVS;
 		PixelShader = DN4;
 		RenderTarget = tDN2;
@@ -539,11 +536,15 @@ technique SCGI {
 		PixelShader = saveForAccum;
 		RenderTarget0 = GI2;
 		RenderTarget1 = tLuminance2swap;
-		//RenderTarget2 = tErrorSwap;
 	}
 	pass SaveDepth {
 		VertexShader = PostProcessVS;
-		PixelShader = saveForReject;
-		RenderTarget = tPrevDepth;
+		PixelShader = saveForRejectZ;
+		RenderTarget = tPrevD;
+	}
+	pass SaveNormal {
+		VertexShader = PostProcessVS;
+		PixelShader = saveForRejectN;
+		RenderTarget = tPrevN;
 	}
 }
