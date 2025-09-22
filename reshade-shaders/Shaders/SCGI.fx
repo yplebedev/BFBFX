@@ -430,7 +430,7 @@ void PostProcessVSPartial(in uint id : SV_VertexID, out float4 position : SV_Pos
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luminanceSquared : SV_Target1, out float sigma2 : SV_Target2) {
 	GI = calcGI(uv, vpos.xy);
-	GI.rgb = (GI.rgb + GI.a * 0.0001 * ambientCol * ambientBoost);
+	GI.rgb = (GI.rgb * reflBoost + GI.a * 0.0001 * ambientCol * ambientBoost);
 	float3 mv = zfw::getVelocity(uv);
 	
 	float depthDelta = zfw::getDepth(uv - mv.xy) - tex2D(sPrevD, uv).x;
@@ -467,7 +467,7 @@ float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	float4 gi = tex2D(sDN2, uv) * reflBoost;
+	float4 gi = tex2D(sDN1, uv);
 	if (debug) return zfw::toneMap(gi.rgb * strength, 20.0);
 	if (displayError) return tex2Dfetch(sError, vpos.xy).xxx * 20.0;
 	return zfw::toneMap(gi.rgb * strength * zfw::getAlbedo(uv) + zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
@@ -528,11 +528,6 @@ technique SCGI {
 		VertexShader = PostProcessVS;
 		PixelShader = DN3;
 		RenderTarget = tDN1;
-	}
-	pass Denoise4 {
-		VertexShader = PostProcessVS;
-		PixelShader = DN4;
-		RenderTarget = tDN2;
 	}
 	pass Blend {
 		VertexShader = PostProcessVS;
