@@ -90,6 +90,7 @@ uniform int framecount < source = "framecount"; >;
 
 uniform float historySize <ui_type = "slider"; ui_label = "Frame Blending"; ui_tooltip = "Affects the noise over update speed and ghosting ratios. This can be higher on higher FPS. 0 is no accumulation, and the closer to 1 the more previous results affect the image."; ui_min = 0.0; ui_max = 0.999;> = 0.8; 
 uniform bool debug <ui_label = "Debug view";> = false;
+uniform bool noFilter <ui_label = "Screw denoising!";> = false;
 uniform float strength <hidden = true; ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "How much GI affects the input colors. Use conservativly."; ui_min = 0.0; ui_max = 100.0;> = 20.0;
 uniform float reflBoost <ui_type = "slider"; ui_max = 4.0; ui_min = 0.001;> = 1.0;
 uniform float ambientBoost <ui_type = "slider"; ui_label = "Ambient intensity"; ui_min = 0.0; ui_max = 10.0;> = 1.0;
@@ -467,7 +468,7 @@ float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	float4 gi = tex2D(sDN1, uv);
+	float4 gi = !noFilter ? tex2D(sDN1, uv) : tex2D(sGI, uv);
 	if (debug) return zfw::toneMap(gi.rgb * strength, 20.0);
 	if (displayError) return tex2Dfetch(sError, vpos.xy).xxx * 20.0;
 	return zfw::toneMap(gi.rgb * strength * zfw::getAlbedo(uv) + zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
