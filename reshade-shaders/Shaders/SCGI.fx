@@ -253,18 +253,18 @@ namespace stepData {
 // I know I'll (or someone else) will look at this code
 // to -steal- learn from, so have some pointers as to why
 // each (debias or otherwise) step is there.
-// This code assumes lambertian diffuse, but technically it could be extended to specular, or any other lobe. At the cost of nosie,
-// since IS is hard for bitmasks, you'll get horrible nosie for tight lobes.
+// This code assumes lambertian diffuse, but technically it could be extended to specular, or any other lobe. 
+// Since this is basically importance-sampling lambert, you'd need a bit of elbow grease to let it do, say, specular.
 float3 calculateIL(uint prevBF, uint currBF, float3 positionVS, float3 nF, float3 nS, float3 delta, float2 uv, float2 uvF, float3 samplePosVS) {
-	float lengthS = dot(delta, delta) + exp2(-32); // this +2e-32 step might not make sense, but since we correct by 2D dist, this is not too horrible.
+	float lengthS = dot(delta, delta) + exp2(-32);
 	float dist = dot(samplePosVS, samplePosVS);
 	float3 di = tex2Dlod(sIrradiance, float4(uv, 0., 0.)).rgb; // theoretically the light, but BackBuf works fine, and is best we got.
 	
 	float deltaBF = ((float)countbits(currBF & ~prevBF)) / SECTORS; // difference of bitmasks. Gets us shadows, and is the similar to HBIL's weighting by the angle diff.
-	float rxW = saturate(dot(normalize(delta), nF)); // light comes in, this weights how much of that incoming light would bounce the the viewer.
-	float reflW = saturate(dot(-normalize(delta), nS)); // how much light reflects into the shaded pixel.
+	float rxW = saturate(dot(normalize(delta), nF)); // light gets spread over a bigger area when it enters at a lower angle
+	float reflW = ceil(dot(-normalize(delta), nS)); // how much light reflects into the shaded pixel.
 	
-	return deltaBF * rxW * reflW * di * dist / lengthS; // shadow * step->fragment * fragment->viewer * emmision * probability correction, adds noise far away * inverse-square
+	return deltaBF * rxW * reflW * di * dist; // shadow * step->fragment * fragment->viewer * emmision * probability correction, adds noise far away * inverse-square
 }
 
 float2 snapVPOS(float2 vpos) {
@@ -334,13 +334,13 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
 	    fb = saturate(((samplingDirection * -fb) - N + PI/2) / PI);
 	    fb = fb.x > fb.y ? fb.yx : fb;
 	    
-   	 uint a = round(fb.x * SECTORS);
-    	uint b = round((fb.y - fb.x) * SECTORS);
+   	 uint a = ceil(fb.x * SECTORS);
+    	uint b = floor((fb.y - fb.x) * SECTORS);
     	
     	uint prevBF = data.bitfield;
     	data.bitfield |= ((1 << b) - 1) << a; 
     	
-		float3 il = calculateIL(prevBF, data.bitfield, V, normal, zfw::getNormal(sampleUV), delta, sampleUV, start / BUFFER_SCREEN_SIZE, samplePosVS) * sampleLength * sampleLength; // and debias by the distance^4
+		float3 il = calculateIL(prevBF, data.bitfield, V, normal, zfw::getNormal(sampleUV), delta, sampleUV, start / BUFFER_SCREEN_SIZE, samplePosVS); // and debias by the distance^4
 		data.lighting += il;
 	 }
     return data;
@@ -392,7 +392,8 @@ float4 calcGI(float2 uv, float2 vpos) {
 	ao = 1.0 - ao / (float(SECTORS) * scgi_slices);
 	ao = positionVS.z > FAR_CLIP || ao < -0.001 ? 1.0 : ao;
 	
-	il /= scgi_slices;
+	il /= scgi_slices * 1000.0;
+	il = positionVS.z > FAR_CLIP ? 0.0 : il;
 	return float4(il, ao);
 }
 
@@ -417,8 +418,14 @@ float prepMinZ3 __PXSDECL__ {
 float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	return float4(
 		zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
-		+ zfw::getAlbedo(uv) * tex2D(sGI, uv).rgb / (exp2(-32) + abs(dot(zfw::sampleNormal(uv, 0), -normalize(zfw::uvzToView(float3(uv, 0)))))),
+		+ zfw::getAlbedo(uv) * tex2D(sGI, uv).rgb,
 	1.);
+}
+
+void PostProcessVSPartial(in uint id : SV_VertexID, out float4 position : SV_Position, out float2 texcoord : TEXCOORD) {
+	texcoord.x = (id == 2) ? 2.0 : 0.0;
+	texcoord.y = (id == 1) ? 2.0 : 0.0;
+	position = float4(texcoord * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luminanceSquared : SV_Target1, out float sigma2 : SV_Target2) {
@@ -460,7 +467,7 @@ float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	float4 gi = tex2D(sGI, uv) * reflBoost;
+	float4 gi = tex2D(sDN2, uv) * reflBoost;
 	if (debug) return zfw::toneMap(gi.rgb * strength, 20.0);
 	if (displayError) return tex2Dfetch(sError, vpos.xy).xxx * 20.0;
 	return zfw::toneMap(gi.rgb * strength * zfw::getAlbedo(uv) + zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
@@ -501,7 +508,7 @@ technique SCGI {
 		RenderTarget = irradiance;
 	}
 	pass GI { 
-		VertexShader = PostProcessVS;
+		VertexShader = PostProcessVSPartial;
 		PixelShader = main;
 		RenderTarget0 = GI;
 		RenderTarget1 = tLuminance2; 
