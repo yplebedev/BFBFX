@@ -324,7 +324,6 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 float4 atrous_low(sampler input, float2 texcoord, float level) {
 	float4 noisy = tex2D(input, texcoord);
 	float3 normal = zfw::getNormal(texcoord);
-	float3 pos = zfw::uvToView(texcoord);
 	
 	float4 sum = 0.0;
 	float2 step = ReShade::PixelSize;
@@ -334,29 +333,16 @@ float4 atrous_low(sampler input, float2 texcoord, float level) {
 	[unroll]
 	for (int i = 0; i < 9; i++) {
 		float2 uv = texcoord + offset_3[i] * step * exp2(level);
-
-		float4 ctmp = tex2Dlod(input, float4(uv, 0.0, 0.0));
-		float4 t = noisy - ctmp;
-		
-		float dist2 = dot(t, t);
-		float c_w = min(exp(-(dist2)/c_phi), 1.0);
+		float ctmp = tex2Dlod(sAO1, float4(uv, 0.0, 0.0)).x;
 		
 		float3 ntmp = zfw::getNormal(uv);
-		t = normal - ntmp;
-		dist2 = max(dot(t, t), 0.0);
+		float3 t = normal - ntmp;
+		float dist2 = max(dot(t, t), 0.0);
 		float n_w = min(exp(-dist2 / n_phi), 1.0);
 		
-		float fullZ = ReShade::GetLinearizedDepth(uv);
-		float3 ptmp = zfw::uvzToView(uv, fullZ);
-		t = pos - ptmp;
-		dist2 = dot(t, t);
-		float p_w = min(exp(-dist2 / p_phi), 1.0);
-		p_w += 0.001;
 		
-		
-		float weight = c_w * n_w * p_w;
-		sum += ctmp * weight * kernel_3[i];
-		cum_w += weight * kernel_3[i];
+		sum += ctmp * n_w * kernel_3[i];
+		cum_w += n_w * kernel_3[i];
 	}
 	return sum/cum_w;
 }
@@ -419,6 +405,7 @@ float getAdaptiveZ(inout float2 samplePos, float t) {
 
 // Inner (step) loop, sets the bitfield
 uint sliceSteps(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, uint bitfield) {
+	[loop]
     for (uint i = 0; i < SCVBAO_STEPS; i++, t += step) {
         float2 samplePos = start + t * rayDir;
         samplePos = floor(samplePos) + 0.5;
@@ -462,6 +449,7 @@ float gtao(float2 uv, float2 vpos) {
 	
     float step = max(1.0, clamp(R / positionVS.z, SCVBAO_STEPS, R * 4) / (SCVBAO_STEPS + 1.0));
 		
+	[loop]	
 	for(float slice = 0.0; slice < 1.0; slice += 1.0 / SCVBAO_SLICES) {
 		float phi = PI * frac(slice + random.x);
 		float2 direction = float2(cos(phi), sin(phi));
