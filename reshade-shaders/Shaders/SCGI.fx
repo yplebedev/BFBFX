@@ -334,6 +334,7 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
 	    float2 fb = acos(float2(dot(normalize(delta), V), dot(normalize(delta + THICKNESS * normalize(samplePosVS)), V)));
 	    fb = saturate(((samplingDirection * -fb) - N + PI/2) / PI);
 	    fb = fb.x > fb.y ? fb.yx : fb;
+	    fb = smoothstep(0, 1, fb); // cosine lobe for AO. Trick by Marty (https://www.martysmods.com/)
 	    
    	 uint a = ceil(fb.x * SECTORS);
     	uint b = floor((fb.y - fb.x) * SECTORS);
