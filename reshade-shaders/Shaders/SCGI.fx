@@ -1,4 +1,3 @@
-// VBGTAO
 // MIT License...
 /* Copyright (c)2025 Yaraslau Lebedzeu.
 

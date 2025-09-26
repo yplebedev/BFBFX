@@ -5,6 +5,7 @@ A collection of ReShade shaders. Features primarily depth-dependent stuff. Also 
 <img width="3439" height="1439" alt="image" src="https://github.com/user-attachments/assets/cde9a2ac-8478-40d1-9688-c13cd3a940b1" />
 
 - Well (this) is pretty impressive
+  
      A 100% real review (no joke)
 
 This is an SSAO shader and the direct successor to the first version. It's a notch slower but is full resoltuon and as such is much sharper. Unlike MXAO it's meant to be used alongside MVs, but has an extra-filtered modeif you don't want MVs. 
