@@ -257,15 +257,13 @@ namespace stepData {
 // This code assumes lambertian diffuse, but technically it could be extended to specular, or any other lobe. 
 // Since this is basically importance-sampling lambert, you'd need a bit of elbow grease to let it do, say, specular.
 float3 calculateIL(uint prevBF, uint currBF, float3 positionVS, float3 nF, float3 nS, float3 delta, float2 uv, float2 uvF, float3 samplePosVS) {
-	float lengthS = dot(delta, delta) + exp2(-32);
-	float dist = dot(samplePosVS, samplePosVS);
 	float3 di = tex2Dlod(sIrradiance, float4(uv, 0., 0.)).rgb; // theoretically the light, but BackBuf works fine, and is best we got.
 	
 	float deltaBF = ((float)countbits(currBF & ~prevBF)) / SECTORS; // difference of bitmasks. Gets us shadows, and is the similar to HBIL's weighting by the angle diff.
 	float rxW = saturate(dot(normalize(delta), nF)); // light gets spread over a bigger area when it enters at a lower angle
 	float reflW = ceil(dot(-normalize(delta), nS)); // how much light reflects into the shaded pixel.
 	
-	return deltaBF * rxW * reflW * di * dist; // shadow * step->fragment * fragment->viewer * emmision * probability correction, adds noise far away * inverse-square
+	return deltaBF * rxW * reflW * di; // shadow * step->fragment * fragment->viewer * emmision
 }
 
 float2 snapVPOS(float2 vpos) {
@@ -336,8 +334,8 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
 	    fb = fb.x > fb.y ? fb.yx : fb;
 	    fb = smoothstep(0, 1, fb); // cosine lobe for AO. Trick by Marty (https://www.martysmods.com/)
 	    
-   	 uint a = ceil(fb.x * SECTORS);
-    	uint b = floor((fb.y - fb.x) * SECTORS);
+   	 uint a = round(fb.x * SECTORS);
+    	uint b = round((fb.y - fb.x) * SECTORS);
     	
     	uint prevBF = data.bitfield;
     	data.bitfield |= ((1 << b) - 1) << a; 
@@ -380,7 +378,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 		uint aoBF = 0;
 		float offset = random.y;
 		
-		// no need for random here
+		
 		stepData::stepData dir1 = sliceSteps(positionVS, V, start, direction, offset, 0.0, 1, N, normalVS, aoBF);
 		aoBF = stepData::getBitfield(dir1);
 		il += stepData::getLighting(dir1);
@@ -394,7 +392,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 	ao = 1.0 - ao / (float(SECTORS) * scgi_slices);
 	ao = positionVS.z > FAR_CLIP || ao < -0.001 ? 1.0 : ao;
 	
-	il /= scgi_slices * 1000.0;
+	il /= scgi_slices;
 	il = positionVS.z > FAR_CLIP ? 0.0 : il;
 	return float4(il, ao);
 }
