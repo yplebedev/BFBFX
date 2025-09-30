@@ -38,6 +38,12 @@ sampler sGI { Texture = GI; AddressU = BORDER; AddressV = BORDER; };
 texture GI2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
 sampler sGI2 { Texture = GI2; AddressU = BORDER; AddressV = BORDER; };
 
+texture tAO { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
+sampler sAO { Texture = tAO; AddressU = BORDER; AddressV = BORDER; };
+
+texture tAOswap { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
+sampler sAOswap { Texture = tAOswap; AddressU = BORDER; AddressV = BORDER; };
+
 texture tLuminance2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
 sampler sLuminance2 { Texture = tLuminance2; };
 
@@ -134,7 +140,7 @@ float getRejectCond(float3 mv, float depthDiff, float nDiff, float2 uv) {
 	float2 prevUV = uv-mv.xy;
 	float2 range = saturate(prevUV * prevUV - prevUV);
 	bool is_outside = range.x != -range.y; //and of course if we are not inside we are outside. 	
-	return !is_outside && mv.z > 0.8 && depthDiff < 0.1 * pow(nDiff, 3.0);
+	return (!is_outside && mv.z > 0.6 && (depthDiff < 0.1)) * pow(nDiff, 3.0);
 }
 
 // NOTES FROM MARTY:
@@ -427,15 +433,20 @@ void PostProcessVSPartial(in uint id : SV_VertexID, out float4 position : SV_Pos
 	position = float4(texcoord * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
-void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luminanceSquared : SV_Target1, out float sigma2 : SV_Target2) {
+void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float AO : SV_Target1, out float luminanceSquared : SV_Target2, out float sigma2 : SV_Target3) {
 	GI = calcGI(uv, vpos.xy);
-	GI.rgb = (GI.rgb * reflBoost + GI.a * 0.0001 * ambientCol * ambientBoost);
+	GI.rgb = (GI.rgb * reflBoost);
+	
 	float3 mv = zfw::getVelocity(uv);
 	
 	float depthDelta = zfw::getDepth(uv - mv.xy) - tex2D(sPrevD, uv).x;
 	float depthDiff = abs(depthDelta);
 	
 	float nDiff = dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz);
+	
+	
+	float accumulatedAO = tex2D(sAOswap, uv).r;
+	AO = lerp(GI.a, accumulatedAO, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
 	
 	float4 accumulatedGI = tex2D(sGI2, uv + mv.xy);
 	GI = lerp(GI, accumulatedGI, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
@@ -469,12 +480,13 @@ float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	float4 gi = !noFilter ? tex2D(sDN1, uv) : tex2D(sGI, uv);
 	if (debug) return zfw::toneMap(gi.rgb * strength, 20.0);
 	if (displayError) return tex2Dfetch(sError, vpos.xy).xxx * 20.0;
-	return zfw::toneMap(gi.rgb * strength * zfw::getAlbedo(uv) + zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
+	return zfw::toneMap(gi.rgb * strength * zfw::getAlbedo(uv) + tex2D(sAO, uv).r * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
 }
 
-void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1) {
+void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1, out float AO : SV_Target2) {
 	GI = tex2Dfetch(sGI, vpos.xy);
 	luma2 = tex2Dfetch(sLuminance2, vpos.xy).r;
+	AO = tex2Dfetch(sAO, vpos.xy).r;
 }
 
 float saveForRejectZ(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
@@ -510,8 +522,9 @@ technique SCGI {
 		VertexShader = PostProcessVSPartial;
 		PixelShader = main;
 		RenderTarget0 = GI;
-		RenderTarget1 = tLuminance2; 
-		RenderTarget2 = tError;
+		RenderTarget1 = tAO;
+		RenderTarget2 = tLuminance2; 
+		RenderTarget3 = tError;
 	}
 	pass Denoise {
 		VertexShader = PostProcessVS;
@@ -537,6 +550,7 @@ technique SCGI {
 		PixelShader = saveForAccum;
 		RenderTarget0 = GI2;
 		RenderTarget1 = tLuminance2swap;
+		RenderTarget2 = tAOswap;
 	}
 	pass SaveDepth {
 		VertexShader = PostProcessVS;
