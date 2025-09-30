@@ -98,8 +98,6 @@ uniform bool debug <ui_label = "Debug view";> = false;
 uniform bool noFilter <ui_label = "Screw denoising!";> = false;
 uniform float strength <hidden = true; ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "How much GI affects the input colors. Use conservativly."; ui_min = 0.0; ui_max = 100.0;> = 20.0;
 uniform float reflBoost <ui_type = "slider"; ui_max = 4.0; ui_min = 0.001;> = 1.0;
-uniform float ambientBoost <ui_type = "slider"; ui_label = "Ambient intensity"; ui_min = 0.0; ui_max = 10.0;> = 1.0;
-uniform float3 ambientCol <ui_type = "color"; ui_label = "Ambient Color";> = 1.0;
 uniform float THICKNESS <ui_type = "slider"; ui_label = "Thickness"; ui_tooltip = "SCGI uses a thickness heuristic. Don't set this too high or low!"; ui_min = 2.0; ui_max = 16.0;> = 2.0; 
 
 
@@ -445,7 +443,7 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Ta
 	float nDiff = dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz);
 	
 	
-	float accumulatedAO = tex2D(sAOswap, uv).r;
+	float accumulatedAO = tex2D(sAOswap, uv + mv.xy).r;
 	AO = lerp(GI.a, accumulatedAO, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
 	
 	float4 accumulatedGI = tex2D(sGI2, uv + mv.xy);
