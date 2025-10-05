@@ -95,6 +95,8 @@ uniform int framecount < source = "framecount"; >;
 
 uniform float historySize <ui_type = "slider"; ui_label = "Frame Blending"; ui_tooltip = "Affects the noise over update speed and ghosting ratios. This can be higher on higher FPS. 0 is no accumulation, and the closer to 1 the more previous results affect the image."; ui_min = 0.0; ui_max = 0.999;> = 0.8; 
 uniform bool debug <ui_label = "Debug view";> = false;
+uniform bool potatoMode <ui_label = "Potato mode"; ui_tooltip = "Lower quality, borks AO, runs 2x faster however.";> = false;
+
 uniform bool noFilter <ui_label = "Screw denoising!";> = false;
 uniform float strength <hidden = true; ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "How much GI affects the input colors. Use conservativly."; ui_min = 0.0; ui_max = 100.0;> = 20.0;
 uniform float reflBoost <ui_type = "slider"; ui_max = 4.0; ui_min = 0.001;> = 1.0;
@@ -172,7 +174,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		float4 t = noisy - ctmp;
 
 		float dist2 = dot(t.rgb, t.rgb); // do NOT guide with variance!
-		float c_w = min(exp(-dist2 / (v_phi * variance + 0.01)), 1.0) + 0.04;
+		float c_w = min(exp(-dist2 / (v_phi * variance + 0.01)), 1.0) + 0.08;
 		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
@@ -408,11 +410,13 @@ float4 calcGI(float2 uv, float2 vpos) {
 		aoBF = stepData::getBitfield(dir1);
 		il += stepData::getLighting(dir1);
 		
-		stepData::stepData dir2 = sliceSteps(positionVS, V, start, -direction, offset, 0.0, -1, N, normalVS, aoBF);
-		aoBF = stepData::getBitfield(dir2);
-		il += stepData::getLighting(dir2);
-
-		ao += float(countbits(aoBF));
+		if (!potatoMode) {
+			stepData::stepData dir2 = sliceSteps(positionVS, V, start, -direction, offset, 0.0, -1, N, normalVS, aoBF);
+			aoBF = stepData::getBitfield(dir2);
+			il += stepData::getLighting(dir2); // wrong but fast
+		}
+		
+		ao += float(countbits(aoBF)); // todo: ass
 	}
 	ao = 1.0 - ao / (float(SECTORS) * scgi_slices);
 	ao = positionVS.z > FAR_CLIP || ao < -0.001 ? 1.0 : ao;
