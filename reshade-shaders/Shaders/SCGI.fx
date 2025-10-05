@@ -172,7 +172,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		float4 t = noisy - ctmp;
 
 		float dist2 = dot(t.rgb, t.rgb); // do NOT guide with variance!
-		float c_w = min(exp(-dist2 / (v_phi * variance + 0.01)), 1.0);
+		float c_w = min(exp(-dist2 / (v_phi * variance + 0.01)), 1.0) + 0.04;
 		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
