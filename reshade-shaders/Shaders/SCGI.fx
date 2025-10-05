@@ -26,7 +26,7 @@ SOFTWARE.*/
 	#define PI 3.14159265358979
 #endif
 
-texture bnt <source = "stbn.png";> {Width = 1024; Height = 1024; Format = R8; };
+texture bnt <source = "stbn.png";> {Width = 2048; Height = 2048; Format = R8; };
 sampler bn { Texture = bnt; };
 
 texture irradiance { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA16F; };
@@ -140,7 +140,6 @@ float getRejectCond(float3 mv, float depthDiff, float nDiff, float2 uv) {
 
 // NOTES FROM MARTY:
 // - Relax normal guide on really small depth delta -- ToDo?
-// - Account for normals when pos weighting -- borked?
 float4 atrous(sampler input, float2 texcoord, float level) {
 	float3 mv = zfw::getVelocity(texcoord);
 	
@@ -226,7 +225,7 @@ float4 GatherLinDepth(float2 texcoord, sampler s) {
 }
 
 float2 getTemporalOffset() {
-	return float2(framecount % 8, (framecount >> 3) % 8);
+	return float2(framecount % 16, (framecount >> 4) % 16);
 }
 
 // also vpos
@@ -493,12 +492,6 @@ float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	1.);
 }
 
-void PostProcessVSPartial(in uint id : SV_VertexID, out float4 position : SV_Position, out float2 texcoord : TEXCOORD) {
-	texcoord.x = (id == 2) ? 2.0 : 0.0;
-	texcoord.y = (id == 1) ? 2.0 : 0.0;
-	position = float4(texcoord * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-}
-
 
 float getHistorySize() {
 	float res = 0.9;
@@ -609,7 +602,7 @@ technique SCGI {
 		RenderTarget = irradiance;
 	}
 	pass GI { 
-		VertexShader = PostProcessVSPartial;
+		VertexShader = PostProcessVS;
 		PixelShader = main;
 		RenderTarget0 = GI;
 		RenderTarget1 = tAO;
