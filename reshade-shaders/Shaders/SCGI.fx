@@ -33,16 +33,16 @@ texture irradiance { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Forma
 sampler sIrradiance { Texture = irradiance; AddressU = BORDER; AddressV = BORDER; };
 
 texture GI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sGI { Texture = GI; AddressU = BORDER; AddressV = BORDER; };
+sampler sGI { Texture = GI; AddressU = CLAMP; AddressV = CLAMP; };
 
 texture GI2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sGI2 { Texture = GI2; AddressU = BORDER; AddressV = BORDER; };
+sampler sGI2 { Texture = GI2; AddressU = CLAMP; AddressV = CLAMP; };
 
 texture tAO { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
-sampler sAO { Texture = tAO; AddressU = BORDER; AddressV = BORDER; };
+sampler sAO { Texture = tAO; AddressU = CLAMP; AddressV = CLAMP; };
 
 texture tAOswap { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
-sampler sAOswap { Texture = tAOswap; AddressU = BORDER; AddressV = BORDER; };
+sampler sAOswap { Texture = tAOswap; AddressU = CLAMP; AddressV = CLAMP; };
 
 texture tLuminance2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
 sampler sLuminance2 { Texture = tLuminance2; };
@@ -138,7 +138,7 @@ float getRejectCond(float3 mv, float depthDiff, float nDiff, float2 uv) {
 	float2 prevUV = uv-mv.xy;
 	float2 range = saturate(prevUV * prevUV - prevUV);
 	bool is_outside = range.x != -range.y; //and of course if we are not inside we are outside. 	
-	return (!is_outside && mv.z > 0.6 && (depthDiff < 0.1)) * pow(nDiff, 3.0);
+	return (!is_outside && mv.z > 0.4 && (depthDiff < 0.1)) * pow(nDiff, 3.0);
 }
 
 // NOTES FROM MARTY:
@@ -290,25 +290,47 @@ float2 snapVPOS4(float2 vpos) {
 float getAdaptiveZ(inout float2 samplePos, float t) {
 	float res = 0;
 	const uint drops = 3;
-	const float dropLength = 16.0;
+	const float dropLength = sqrt(2.)*0.5;
 	
 	if (t < dropLength) {
 		samplePos = snapVPOS(samplePos);
 		res = ReShade::GetLinearizedDepth(samplePos * BUFFER_PIXEL_SIZE);
 	}
-	if (t >= dropLength && t < dropLength * 2.0 && drops > 0) {
+	else if (t >= dropLength && t < dropLength * 2.0 && drops > 0) {
 		samplePos = snapVPOS2(samplePos);
 		res = tex2Dfetch(sminZ, samplePos * 0.5).x;
 	}
-	if (t >= dropLength * 2.0 && t < dropLength * 4.0 && drops > 1) {
+	else if (t >= dropLength * 2.0 && t < dropLength * 4.0 && drops > 1) {
 		samplePos = snapVPOS3(samplePos);
 		res = tex2Dfetch(sminZ2, samplePos * 0.25).x;
 	}
-	if (t >= dropLength * 4.0 && drops > 2) {
+	else if (t >= dropLength * 4.0 && drops > 2) {
 		samplePos = snapVPOS4(samplePos);
 		res = tex2Dfetch(sminZ3, samplePos * 0.125).x;
 	}
 	return res;
+}
+
+// Fetches lower res normal further away to save on fetch costs.
+//                    VPOS (pixcoords), distance
+float3 getAdaptiveN(inout float2 samplePos, float t) {
+	float3 res = 0;
+	const uint drops = 3;
+	const float dropLength = 2.0;
+	
+	if (t < dropLength) {
+		res = zfw::getNormal(samplePos * BUFFER_PIXEL_SIZE);
+	}
+	else if (t >= dropLength && t < dropLength * 2.0 && drops > 0) {
+		res = zfw::sampleNormal(samplePos * BUFFER_PIXEL_SIZE, 0.);
+	}
+	else if (t >= dropLength * 2.0 && t < dropLength * 4.0 && drops > 1) {
+		res = zfw::sampleNormal(samplePos * BUFFER_PIXEL_SIZE, 1.);
+	}
+	else if (t >= dropLength * 4.0 && drops > 2) {
+		res = zfw::sampleNormal(samplePos * BUFFER_PIXEL_SIZE, 2.);
+	}
+	return normalize(res);
 }
 
 stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, float3 normal, uint bitfield) {
@@ -338,12 +360,12 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
 	    fb = smoothstep(0, 1, fb); // cosine lobe for AO. Trick by Marty (https://www.martysmods.com/)
 	    
    	 uint a = round(fb.x * SECTORS);
-    	uint b = round((fb.y - fb.x) * SECTORS);
+    	uint b = ceil((fb.y - fb.x) * SECTORS);
     	
     	uint prevBF = data.bitfield;
     	data.bitfield |= ((1 << b) - 1) << a; 
     	
-		float3 il = calculateIL(prevBF, data.bitfield, V, normal, zfw::getNormal(sampleUV), delta, sampleUV, start / BUFFER_SCREEN_SIZE, samplePosVS); // and debias by the distance^4
+		float3 il = calculateIL(prevBF, data.bitfield, V, normal, getAdaptiveN(sampleVS, sampleLength), delta, sampleUV, start / BUFFER_SCREEN_SIZE, samplePosVS); // and debias by the distance^4
 		data.lighting += il;
 	 }
     return data;
@@ -360,7 +382,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 	
 	float3 V = normalize(-positionVS);
 	float3 normalVS = zfw::getNormal(uv);
-	positionVS += normalVS * 0.0001;
+	positionVS += normalVS * 0.01;
 
     //float step = max(1.0, R / positionVS.z / (SCVBAO_STEPS + 1.0));
 	
@@ -433,8 +455,6 @@ void PostProcessVSPartial(in uint id : SV_VertexID, out float4 position : SV_Pos
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float AO : SV_Target1, out float luminanceSquared : SV_Target2, out float sigma2 : SV_Target3) {
 	GI = calcGI(uv, vpos.xy);
-	GI.rgb = (GI.rgb * reflBoost);
-	
 	float3 mv = zfw::getVelocity(uv);
 	
 	float depthDelta = zfw::getDepth(uv - mv.xy) - tex2D(sPrevD, uv).x;
@@ -471,14 +491,17 @@ float4 DN3(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(sDN1, uv, 3);
+	return atrous(sDN1, uv, 1);
+}
+
+float4 DN5(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return atrous(sDN2, uv, 0);
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	float4 gi = !noFilter ? tex2D(sDN1, uv) : tex2D(sGI, uv);
-	if (debug) return zfw::toneMap(gi.rgb * strength, 20.0);
-	if (displayError) return tex2Dfetch(sError, vpos.xy).xxx * 20.0;
-	return zfw::toneMap(gi.rgb * strength * zfw::getAlbedo(uv) + tex2D(sAO, uv).r * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
+	if (debug) return zfw::toneMap(gi.rgb * reflBoost + tex2D(sAO, uv).xxx * 0.1, 20.0);
+	return zfw::toneMap(gi.rgb * reflBoost * zfw::getAlbedo(uv) + tex2D(sAO, uv).r * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
 }
 
 void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1, out float AO : SV_Target2) {
@@ -537,6 +560,16 @@ technique SCGI {
 	pass Denoise3 {
 		VertexShader = PostProcessVS;
 		PixelShader = DN3;
+		RenderTarget = tDN1;
+	}
+	pass Denoise4 {
+		VertexShader = PostProcessVS;
+		PixelShader = DN4;
+		RenderTarget = tDN2;
+	}
+	pass Denoise5 {
+		VertexShader = PostProcessVS;
+		PixelShader = DN5;
 		RenderTarget = tDN1;
 	}
 	pass Blend {
