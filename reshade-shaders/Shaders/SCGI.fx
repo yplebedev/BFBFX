@@ -93,30 +93,26 @@ sampler sPrevN { Texture = tPrevN;
 
 uniform int framecount < source = "framecount"; >;
 
-uniform float historySize <ui_type = "slider"; ui_label = "Frame Blending"; ui_tooltip = "Affects the noise over update speed and ghosting ratios. This can be higher on higher FPS. 0 is no accumulation, and the closer to 1 the more previous results affect the image."; ui_min = 0.0; ui_max = 0.999;> = 0.8; 
-uniform bool debug <ui_label = "Debug view";> = false;
-uniform bool potatoMode <ui_label = "Potato mode"; ui_tooltip = "Lower quality, borks AO, runs 2x faster however.";> = false;
-
-uniform bool noFilter <ui_label = "Screw denoising!";> = false;
-uniform float strength <hidden = true; ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "How much GI affects the input colors. Use conservativly."; ui_min = 0.0; ui_max = 100.0;> = 20.0;
-uniform float reflBoost <ui_type = "slider"; ui_max = 4.0; ui_min = 0.001;> = 1.0;
+uniform bool debug <ui_label = "Debug view"; hidden = false;> = false;
+uniform bool noFilter <ui_label = "Screw denoising!"; hidden = true;> = false;
+uniform float reflBoost <ui_type = "slider"; ui_max = 16.0; ui_min = 0.001;> = 1.0;
 uniform float THICKNESS <ui_type = "slider"; ui_label = "Thickness"; ui_tooltip = "SCGI uses a thickness heuristic. Don't set this too high or low!"; ui_min = 2.0; ui_max = 16.0;> = 2.0; 
-
-
 uniform bool displayError<hidden = true;> = false;
 
 uniform float n_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Normal avoiding";> = 0.1;
 uniform float p_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Depth avoiding";> = 1.0;
 uniform float v_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Variance avoiding";> = 1.0;
 
-uniform float kernel[25] <hidden = true;> = {
+uniform int quality <ui_type = "combo"; ui_label = "GI quality"; ui_items = "Minimal\0Low\0Medium\0High\0Oh god\0";> = 0;
+
+const static float kernel[25] = {
     1.0/256.0, 1.0/64.0,  3.0/128.0, 1.0/64.0,  1.0/256.0,
     1.0/64.0,  1.0/16.0,  3.0/32.0,  1.0/16.0,  1.0/64.0,
     3.0/128.0, 3.0/32.0,  9.0/64.0,  3.0/32.0,  3.0/128.0,
     1.0/64.0,  1.0/16.0,  3.0/32.0,  1.0/16.0,  1.0/64.0,
     1.0/256.0, 1.0/64.0,  3.0/128.0, 1.0/64.0,  1.0/256.0
 };
-uniform float2 offset[25] <hidden = true;> = {
+const static float2 offset[25] = {
     float2(-2.0, -2.0), float2(-1.0, -2.0), float2(0.0, -2.0), float2(1.0, -2.0), float2(2.0, -2.0),
     float2(-2.0, -1.0), float2(-1.0, -1.0), float2(0.0, -1.0), float2(1.0, -1.0), float2(2.0, -1.0),
     float2(-2.0,  0.0), float2(-1.0,  0.0), float2(0.0,  0.0), float2(1.0,  0.0), float2(2.0,  0.0),
@@ -125,9 +121,8 @@ uniform float2 offset[25] <hidden = true;> = {
 };
 
 
-uniform int scgi_slices <ui_type = "slider"; ui_label = "Rays"; ui_tooltip = "How many directions per pixel to consider. Lower values are faster, but more noisy. \n\nPerformance impact: EXTREME!"; ui_min = 1; ui_max = 16;> = 1;
-
-uniform int scgi_steps <ui_type = "slider"; ui_label = "Steps per Ray"; ui_tooltip = "How many times to consider the geometry per ray. Higher values increase precision and quality, but slow down the effect. \n\nPerformance impact: High"; ui_min = 2; ui_max = 32;> = 8;
+//uniform int scgi_slices <ui_type = "slider"; ui_label = "Rays"; ui_tooltip = "How many directions per pixel to consider. Lower values are faster, but more noisy. \n\nPerformance impact: EXTREME!"; ui_min = 1; ui_max = 16;> = 1;
+//uniform int scgi_steps <ui_type = "slider"; ui_label = "Steps per Ray"; ui_tooltip = "How many times to consider the geometry per ray. Higher values increase precision and quality, but slow down the effect. \n\nPerformance impact: High"; ui_min = 2; ui_max = 32;> = 8;
 
 #define SECTORS 32
 
@@ -335,11 +330,34 @@ float3 getAdaptiveN(inout float2 samplePos, float t) {
 	return normalize(res);
 }
 
+uint getStepCount() {
+	uint res = 1;
+	switch (quality) {
+		case 0:
+			res = 2;
+			break;
+		case 1:
+			res = 4;
+			break;
+		case 2:
+			res = 8;
+			break;
+		case 3:
+			res = 16;
+			break;
+		case 4:
+			res = 20;
+			break;
+	}
+	return res;
+}
+
 stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, float3 normal, uint bitfield) {
 	stepData::stepData data;
 	data.bitfield = bitfield;
 	data.lighting = 0.0;
 	
+	uint scgi_steps = getStepCount();
     for (uint i = 0; i < scgi_steps; i++) {
     	float sampleLength = (t + i) / scgi_steps;
     	sampleLength *= sampleLength; // sample more closer.
@@ -373,6 +391,28 @@ stepData::stepData sliceSteps(float3 positionVS, float3 V, float2 start, float2 
     return data;
 }
 
+uint getSliceCount() {
+	uint res = 1;
+	switch (quality) {
+		case 0:
+			res = 1;
+			break;
+		case 1:
+			res = 1;
+			break;
+		case 2:
+			res = 2;
+			break;
+		case 3:
+			res = 4;
+			break;
+		case 4:
+			res = 8;
+			break;
+	}
+	return res;
+}
+
 // RGB - inderect illum, A - ambient occlusion
 float4 calcGI(float2 uv, float2 vpos) {
 	float2 random = stbn(vpos);
@@ -389,6 +429,8 @@ float4 calcGI(float2 uv, float2 vpos) {
     //float step = max(1.0, R / positionVS.z / (SCVBAO_STEPS + 1.0));
 	
 	float3 il = 0;
+	
+	float scgi_slices = getSliceCount();
 	for(float slice = 0.0; slice < 1.0; slice += 1.0 / scgi_slices) {
 		float phi = PI * frac(slice + random.x);
 		float2 direction = float2(cos(phi), sin(phi));
@@ -410,7 +452,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 		aoBF = stepData::getBitfield(dir1);
 		il += stepData::getLighting(dir1);
 		
-		if (!potatoMode) {
+		if (quality != 0) {
 			stepData::stepData dir2 = sliceSteps(positionVS, V, start, -direction, offset, 0.0, -1, N, normalVS, aoBF);
 			aoBF = stepData::getBitfield(dir2);
 			il += stepData::getLighting(dir2); // wrong but fast
@@ -457,6 +499,29 @@ void PostProcessVSPartial(in uint id : SV_VertexID, out float4 position : SV_Pos
 	position = float4(texcoord * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
+
+float getHistorySize() {
+	float res = 0.9;
+	switch (quality) {
+		case 0:
+			res = 0.97;
+			break;
+		case 1:
+			res = 0.98; /// do NOT even ask why
+			break;
+		case 2:
+			res = 0.96;
+			break;
+		case 3:
+			res = 0.95;
+			break;
+		case 4:
+			res = 0.90;
+			break;
+	}
+	return res;
+}
+
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float AO : SV_Target1, out float luminanceSquared : SV_Target2, out float sigma2 : SV_Target3) {
 	GI = calcGI(uv, vpos.xy);
 	float3 mv = zfw::getVelocity(uv);
@@ -466,7 +531,7 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Ta
 	
 	float nDiff = dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz);
 	
-	
+	float historySize = getHistorySize(); 
 	float accumulatedAO = tex2D(sAOswap, uv + mv.xy).r;
 	AO = lerp(GI.a, accumulatedAO, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
 	
