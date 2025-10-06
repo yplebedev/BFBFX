@@ -431,7 +431,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 	
 	float scgi_slices = getSliceCount();
 	for(float slice = 0.0; slice < 1.0; slice += 1.0 / scgi_slices) {
-		float phi = PI * frac(slice + random.x);
+		float phi = PI * frac(slice + random.x) * (quality ? 1.0 : 2.0);
 		float2 direction = float2(cos(phi), sin(phi));
 		
 		float3 directionF3 = float3(direction, 0.0);
@@ -457,7 +457,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 			il += stepData::getLighting(dir2); // wrong but fast
 		}
 		
-		ao += float(countbits(aoBF)); // todo: ass
+		ao += float(countbits(aoBF)) * (quality ? 0.5 : 1.0); // todo: ass
 	}
 	ao = 1.0 - ao / (float(SECTORS) * scgi_slices);
 	ao = positionVS.z > FAR_CLIP || ao < -0.001 ? 1.0 : ao;
@@ -497,10 +497,10 @@ float getHistorySize() {
 	float res = 0.9;
 	switch (quality) {
 		case 0:
-			res = 0.97;
+			res = 0.98;
 			break;
 		case 1:
-			res = 0.98; /// do NOT even ask why
+			res = 0.98;
 			break;
 		case 2:
 			res = 0.96;
