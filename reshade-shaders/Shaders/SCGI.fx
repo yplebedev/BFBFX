@@ -95,7 +95,7 @@ uniform int framecount < source = "framecount"; >;
 
 uniform bool debug <ui_label = "Debug view"; hidden = false;> = false;
 uniform bool noFilter <ui_label = "Screw denoising!"; hidden = true;> = false;
-uniform float reflBoost <ui_type = "slider"; ui_max = 16.0; ui_min = 0.001;> = 1.0;
+uniform float reflBoost <ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "An all-in-one strength parameter. Minimal is very cheap, but looks bad. Low is the minimum intended playable experience"; ui_max = 16.0; ui_min = 0.001;> = 1.0;
 uniform float THICKNESS <ui_type = "slider"; ui_label = "Thickness"; ui_tooltip = "SCGI uses a thickness heuristic. Don't set this too high or low!"; ui_min = 2.0; ui_max = 16.0;> = 2.0; 
 uniform bool displayError<hidden = true;> = false;
 
@@ -497,19 +497,19 @@ float getHistorySize() {
 	float res = 0.9;
 	switch (quality) {
 		case 0:
-			res = 0.98;
+			res = 0.97;
 			break;
 		case 1:
-			res = 0.98;
-			break;
-		case 2:
 			res = 0.96;
 			break;
+		case 2:
+			res = 0.93;
+			break;
 		case 3:
-			res = 0.95;
+			res = 0.85;
 			break;
 		case 4:
-			res = 0.90;
+			res = 0.70;
 			break;
 	}
 	return res;
@@ -553,11 +553,11 @@ float4 DN3(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(sDN1, uv, 1);
+	return atrous(sDN1, uv, 3);
 }
 
 float4 DN5(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(sDN2, uv, 0);
+	return atrous(sDN2, uv, 2); // lower artifacts?
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
