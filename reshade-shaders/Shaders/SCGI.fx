@@ -104,6 +104,7 @@ uniform float p_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6
 uniform float v_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Variance avoiding";> = 1.0;
 
 uniform int quality <ui_type = "combo"; ui_label = "GI quality"; ui_items = "Minimal\0Low\0Medium\0High\0Oh god\0";> = 0;
+uniform float render_res <ui_type = "slider"; ui_min = 0.0; ui_max = 1.0;> = 1.0;
 
 const static float kernel[25] = {
     1.0/256.0, 1.0/64.0,  3.0/128.0, 1.0/64.0,  1.0/256.0,
@@ -486,9 +487,10 @@ float prepMinZ3 __PXSDECL__ {
 }
 
 float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	float3 mv = zfw::getVelocity(uv);
 	return float4(
 		zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
-		+ zfw::getAlbedo(uv) * tex2D(sGI, uv).rgb,
+		+ zfw::getAlbedo(uv) * tex2D(sGI, uv + mv.xy).rgb,
 	1.);
 }
 
@@ -513,6 +515,12 @@ float getHistorySize() {
 			break;
 	}
 	return res;
+}
+
+void PostProcessVSPartial(in uint id : SV_VertexID, out float4 position : SV_Position, out float2 texcoord : TEXCOORD) {
+	texcoord.x = (id == 2) ? (2.0 * render_res) : 0.0;
+	texcoord.y = (id == 1) ? (2.0 * render_res) : 0.0;
+	position = float4(texcoord * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float AO : SV_Target1, out float luminanceSquared : SV_Target2, out float sigma2 : SV_Target3) {
