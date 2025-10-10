@@ -89,6 +89,11 @@ sampler sPrevN { Texture = tPrevN;
 	MinFilter = POINT;
 	MipFilter = POINT; };
 
+texture tAccumL { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R32U; };
+sampler2D<uint> sAccumL { Texture = tAccumL; };
+
+texture tAccumLswap { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R32U; };
+sampler2D<uint> sAccumLswap { Texture = tAccumLswap; };
 
 
 uniform int framecount < source = "framecount"; >;
@@ -495,7 +500,7 @@ float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 
-float getHistorySize() {
+float getHistorySize(float2 uv) {
 	float res = 0.9;
 	switch (quality) {
 		case 0:
@@ -514,6 +519,7 @@ float getHistorySize() {
 			res = 0.70;
 			break;
 	}
+	res = 1.0 - 0.97 * rcp(1.0 + float(tex2D(sAccumL, uv)));
 	return res;
 }
 
@@ -532,17 +538,17 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Ta
 	
 	float nDiff = dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz);
 	
-	float historySize = getHistorySize(); 
+	float historySize = getHistorySize(uv); 
 	float accumulatedAO = tex2D(sAOswap, uv + mv.xy).r;
-	AO = lerp(GI.a, accumulatedAO, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
+	AO = lerp(GI.a, accumulatedAO, historySize);
 	
 	float4 accumulatedGI = tex2D(sGI2, uv + mv.xy);
-	GI = lerp(GI, accumulatedGI, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
+	GI = lerp(GI, accumulatedGI, historySize);
 	
 	float luminance = dot(GI.rgb, float3(0.2126, 0.7152, 0.0722));
 	luminanceSquared = luminance * luminance;
 	float accumulatedLuminanceSquared = tex2D(sLuminance2swap, uv + mv.xy).r;
-	luminanceSquared = lerp(luminanceSquared, accumulatedLuminanceSquared, historySize * getRejectCond(mv, depthDiff, nDiff, uv));
+	luminanceSquared = lerp(luminanceSquared, accumulatedLuminanceSquared, historySize);
 	
 	sigma2 = luminanceSquared - (luminance * luminance);
 	GI.a = sigma2;
@@ -569,9 +575,32 @@ float4 DN5(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	//if (true) return tex2D(sAccumL, uv);
 	float4 gi = !noFilter ? tex2D(sDN1, uv) : tex2D(sGI, uv);
 	if (debug) return zfw::toneMap(gi.rgb * reflBoost + tex2D(sAO, uv).xxx * 0.1, 20.0);
 	return zfw::toneMap(gi.rgb * reflBoost * zfw::getAlbedo(uv) + tex2D(sAO, uv).r * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
+}
+
+void updateAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccum : SV_Target0) {
+	float3 mv = zfw::getVelocity(uv);
+	
+	float depthDelta = zfw::getDepth(uv - mv.xy) - tex2D(sPrevD, uv).x;
+	float depthDiff = abs(depthDelta);
+	
+	float nDiff = dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz);
+	float rej = getRejectCond(mv, depthDiff, nDiff, uv);
+	
+	//bad
+	if (rej < 0.4) {
+		curAccum = 0u;
+		return;
+	}
+	
+	curAccum = tex2D(sAccumLswap, uv) + 1u;
+}
+
+void updateAccumSwap(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccumSwap : SV_Target0) {
+	curAccumSwap = tex2D(sAccumL, uv);
 }
 
 void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1, out float AO : SV_Target2) {
@@ -645,6 +674,16 @@ technique SCGI {
 	pass Blend {
 		VertexShader = PostProcessVS;
 		PixelShader = blend;
+	}
+	pass updateAccum {
+		VertexShader = PostProcessVS;
+		PixelShader = updateAccum;
+		RenderTarget0 = tAccumL;
+	}
+	pass updateAccumSwap {
+		VertexShader = PostProcessVS;
+		PixelShader = updateAccumSwap;
+		RenderTarget0 = tAccumLswap;
 	}
 	pass SaveForAccum {
 		VertexShader = PostProcessVS;

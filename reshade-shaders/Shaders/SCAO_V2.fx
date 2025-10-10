@@ -515,7 +515,7 @@ float4 main __PXSDECL__ {
 		const float rejectZWeight = dot(deltaZ, deltaZ);
 		
 		
-		ao = lerp(ao, tex2D(sAO3, uv + mv.xy).x, historySize * mv.z * (mv.z < 0.4 ? 0.0 : 1.0) * (rejectZWeight > 0.0001 ? 0.0 : 1.0));
+		ao = lerp(ao, tex2D(sAO3, uv + mv.xy).x, historySize * mv.z * (mv.z < 0.4 ? 0.0 : 1.0) * (rejectZWeight > 0.0000001 ? 0.0 : 1.0));
 	#endif
 	return autoF4(ao);
 }
