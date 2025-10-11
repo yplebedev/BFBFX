@@ -26,7 +26,7 @@ SOFTWARE.*/
 	#define PI 3.14159265358979
 #endif
 
-texture bnt <source = "stbn.png";> {Width = 2048; Height = 2048; Format = R8; };
+texture bnt <source = "stbn.png";> {Width = 1024; Height = 1024; Format = R8; };
 sampler bn { Texture = bnt; };
 
 texture irradiance { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA16F; };
@@ -109,7 +109,6 @@ uniform float p_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6
 uniform float v_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Variance avoiding";> = 1.0;
 
 uniform int quality <ui_type = "combo"; ui_label = "GI quality"; ui_items = "Minimal\0Low\0Medium\0High\0Oh god\0";> = 0;
-uniform float render_res <ui_type = "slider"; ui_min = 0.0; ui_max = 1.0;> = 1.0;
 
 const static float kernel[25] = {
     1.0/256.0, 1.0/64.0,  3.0/128.0, 1.0/64.0,  1.0/256.0,
@@ -137,27 +136,18 @@ const static float2 offset[25] = {
 #define __PXSDECL__ (float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 
 // high value == safe
-float getRejectCond(float3 mv, float depthDiff, float nDiff, float2 uv) {
-	float2 prevUV = uv-mv.xy;
-	float2 range = saturate(prevUV * prevUV - prevUV);
-	bool is_outside = range.x != -range.y; //and of course if we are not inside we are outside. 	
-	return (!is_outside && mv.z > 0.4 && (depthDiff < 0.1)) * pow(nDiff, 3.0);
+float getRejectCond(float3 mv, float depthDiff, float nDiff) {
+	return mv.z * pow(nDiff, 3.0) * saturate(rcp(depthDiff + 0.0001));
 }
 
 // NOTES FROM MARTY:
 // - Relax normal guide on really small depth delta -- ToDo?
 float4 atrous(sampler input, float2 texcoord, float level) {
-	float3 mv = zfw::getVelocity(texcoord);
-	
-	float depthDelta = zfw::getDepth(texcoord - mv.xy) - tex2D(sPrevD, texcoord).x;
-	float depthDiff = max(abs(depthDelta), 0.0);
-	
-	float nDiff = dot(zfw::getNormal(texcoord - mv.xy), tex2D(sPrevN, texcoord).xyz);
-	
-	float reject = getRejectCond(mv, depthDelta, nDiff, texcoord);
+	uint accumL = tex2D(sAccumL, texcoord);
+	bool reject = accumL == 0u;
 	
 	float4 noisy = tex2D(input, texcoord);
-	float variance = tex2Dlod(input, float4(texcoord, 0.0, reject < 0.5 ? 16.0 : 1.0)).w;
+	float variance = tex2Dlod(input, float4(texcoord, 0.0, reject ? 16.0 : 1.0)).w;
 	float3 normal = zfw::getNormal(texcoord);
 	float3 pos = zfw::uvToView(texcoord);
 	
@@ -174,7 +164,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		float4 t = noisy - ctmp;
 
 		float dist2 = dot(t.rgb, t.rgb); // do NOT guide with variance!
-		float c_w = min(exp(-dist2 / (v_phi * variance + 0.01)), 1.0) + 0.08;
+		float c_w = min(exp(-dist2 * clamp(accumL / 30u, 1u, 256u) / (v_phi * variance + 0.01)), 1.0) + 0.08;
 		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
@@ -230,8 +220,9 @@ float4 GatherLinDepth(float2 texcoord, sampler s) {
     return depth;
 }
 
+// STBN stuff
 float2 getTemporalOffset() {
-	return float2(framecount % 16, (framecount >> 4) % 16);
+	return float2(framecount % 8, (framecount >> 3) % 8);
 }
 
 // also vpos
@@ -501,49 +492,19 @@ float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 
 
 float getHistorySize(float2 uv) {
-	float res = 0.9;
-	switch (quality) {
-		case 0:
-			res = 0.97;
-			break;
-		case 1:
-			res = 0.96;
-			break;
-		case 2:
-			res = 0.93;
-			break;
-		case 3:
-			res = 0.85;
-			break;
-		case 4:
-			res = 0.70;
-			break;
-	}
-	res = 1.0 - 0.97 * rcp(1.0 + float(tex2D(sAccumL, uv)));
-	return res;
-}
-
-void PostProcessVSPartial(in uint id : SV_VertexID, out float4 position : SV_Position, out float2 texcoord : TEXCOORD) {
-	texcoord.x = (id == 2) ? (2.0 * render_res) : 0.0;
-	texcoord.y = (id == 1) ? (2.0 * render_res) : 0.0;
-	position = float4(texcoord * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+	return rcp(1.0 + float(tex2D(sAccumL, uv)));
 }
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float AO : SV_Target1, out float luminanceSquared : SV_Target2, out float sigma2 : SV_Target3) {
 	GI = calcGI(uv, vpos.xy);
 	float3 mv = zfw::getVelocity(uv);
 	
-	float depthDelta = zfw::getDepth(uv - mv.xy) - tex2D(sPrevD, uv).x;
-	float depthDiff = abs(depthDelta);
-	
-	float nDiff = dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz);
-	
 	float historySize = getHistorySize(uv); 
 	float accumulatedAO = tex2D(sAOswap, uv + mv.xy).r;
-	AO = lerp(GI.a, accumulatedAO, historySize);
+	AO = lerp(accumulatedAO, GI.a, historySize);
 	
 	float4 accumulatedGI = tex2D(sGI2, uv + mv.xy);
-	GI = lerp(GI, accumulatedGI, historySize);
+	GI = lerp(accumulatedGI, GI, historySize);
 	
 	float luminance = dot(GI.rgb, float3(0.2126, 0.7152, 0.0722));
 	luminanceSquared = luminance * luminance;
@@ -571,11 +532,10 @@ float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float4 DN5(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(sDN2, uv, 2); // lower artifacts?
+	return atrous(sDN2, uv, 4); // lower artifacts?
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	//if (true) return tex2D(sAccumL, uv);
 	float4 gi = !noFilter ? tex2D(sDN1, uv) : tex2D(sGI, uv);
 	if (debug) return zfw::toneMap(gi.rgb * reflBoost + tex2D(sAO, uv).xxx * 0.1, 20.0);
 	return zfw::toneMap(gi.rgb * reflBoost * zfw::getAlbedo(uv) + tex2D(sAO, uv).r * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
@@ -587,16 +547,11 @@ void updateAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAc
 	float depthDelta = zfw::getDepth(uv - mv.xy) - tex2D(sPrevD, uv).x;
 	float depthDiff = abs(depthDelta);
 	
-	float nDiff = dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz);
-	float rej = getRejectCond(mv, depthDiff, nDiff, uv);
+	float nDiff = saturate(dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz));
+	float rej = getRejectCond(mv, depthDiff, nDiff);
 	
-	//bad
-	if (rej < 0.4) {
-		curAccum = 0u;
-		return;
-	}
-	
-	curAccum = tex2D(sAccumLswap, uv) + 1u;
+	// :)
+	curAccum = uint(ceil(tex2D(sAccumLswap, uv) * rej)) + 1u;
 }
 
 void updateAccumSwap(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccumSwap : SV_Target0) {
@@ -613,8 +568,8 @@ float saveForRejectZ(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Targe
 	return zfw::getDepth(uv);
 }
 
-float3 saveForRejectN(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return zfw::getNormal(uv);
+float4 saveForRejectN(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	return zfw::getNormal(uv).xyzz;
 }
 
 technique SCGI {
