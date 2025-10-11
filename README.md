@@ -11,6 +11,7 @@ A collection of ReShade shaders. Features primarily depth-dependent stuff. Also 
 This is an SSAO shader and the direct successor to the first version. It's a notch slower but is full resoltuon and as such is much sharper. Unlike MXAO it's meant to be used alongside MVs, but has an extra-filtered modeif you don't want MVs. 
 
 2. SCGI
-   <img width="1629" height="582" alt="image" src="https://github.com/user-attachments/assets/24349288-0b62-4c27-8841-45fc6581d4b9" />
+   <img width="1629" height="582" alt="image" src="https://github.com/user-attachments/assets/24349288-0b62-4c27-8841-45fc6581d4b9" /><img width="1720" height="720" alt="bms 2025-10-11 20-26-38_515" src="https://github.com/user-attachments/assets/9b8ecfcb-d535-4c5d-97a9-9028a1a5bc3f" />
+
 
 A GI shader. There's nothing too special. It's meant as a mid- to high-end solution for all things GI. It uses relativly modern tech for some extra quality.
