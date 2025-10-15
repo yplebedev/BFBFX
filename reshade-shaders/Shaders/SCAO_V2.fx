@@ -271,6 +271,7 @@ float4 autoF4(float x) {
 }
 
 // From TurboGI (Zenteon)
+// Unused
 float4 getSH(float3 vec) {
 		return float4(0.282095, 0.488603f * vec.y,  0.488603f * vec.z, 0.488603f * vec.x);
 }
