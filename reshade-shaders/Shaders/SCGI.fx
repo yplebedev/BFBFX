@@ -110,6 +110,11 @@ uniform float v_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6
 
 uniform int quality <ui_type = "combo"; ui_label = "GI quality"; ui_items = "Minimal\0Low\0Medium\0High\0Oh god\0";> = 0;
 
+uniform bool boostInterrefl = true;
+
+//uniform float fovX <ui_type = "slider"; ui_min = 1.0; ui_max = 100.0; ui_label = "HFOV";> = 90.0;
+
+
 const static float kernel[25] = {
     1.0/256.0, 1.0/64.0,  3.0/128.0, 1.0/64.0,  1.0/256.0,
     1.0/64.0,  1.0/16.0,  3.0/32.0,  1.0/16.0,  1.0/64.0,
@@ -164,7 +169,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		float4 t = noisy - ctmp;
 
 		float dist2 = dot(t.rgb, t.rgb); // do NOT guide with variance!
-		float c_w = min(exp(-dist2 * clamp(accumL / 30u, 1u, 256u) / (v_phi * variance + 0.01)), 1.0) + 0.08;
+		float c_w = min(exp(-dist2 * sqrt(accumL) / (v_phi * variance + 0.01)), 1.0) + 0.08;
 		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
@@ -232,6 +237,7 @@ float2 stbn(float2 p) {
 				  tex2Dfetch(bn, ((p + xyOffset) % 64) + getTemporalOffset() * 64).x);
 	
 }
+
 
 namespace stepData {
 	struct stepData {
@@ -420,7 +426,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 	
 	float3 V = normalize(-positionVS);
 	float3 normalVS = zfw::getNormal(uv);
-	positionVS += normalVS * 0.01;
+	positionVS += normalVS * 0.001;
 
     //float step = max(1.0, R / positionVS.z / (SCVBAO_STEPS + 1.0));
 	
@@ -486,13 +492,13 @@ float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	float3 mv = zfw::getVelocity(uv);
 	return float4(
 		zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
-		+ zfw::getAlbedo(uv) * tex2D(sGI, uv + mv.xy).rgb,
+		+ zfw::getAlbedo(uv) * (boostInterrefl ? reflBoost : 1.0) * tex2D(sGI, uv + mv.xy).rgb,
 	1.);
 }
 
 
 float getHistorySize(float2 uv) {
-	return rcp(1.0 + float(tex2D(sAccumL, uv)));
+	return 0.96 * rcp(1.0 + float(tex2D(sAccumL, uv)));
 }
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float AO : SV_Target1, out float luminanceSquared : SV_Target2, out float sigma2 : SV_Target3) {
@@ -532,7 +538,7 @@ float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float4 DN5(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(sDN2, uv, 4); // lower artifacts?
+	return atrous(sDN2, uv, 2); // lower artifacts?
 }
 
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
@@ -555,7 +561,7 @@ void updateAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAc
 }
 
 void updateAccumSwap(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccumSwap : SV_Target0) {
-	curAccumSwap = tex2D(sAccumL, uv);
+	curAccumSwap = clamp(tex2D(sAccumL, uv), 0u, 64u);
 }
 
 void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1, out float AO : SV_Target2) {
