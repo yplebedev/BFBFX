@@ -492,7 +492,7 @@ float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	float3 mv = zfw::getVelocity(uv);
 	return float4(
 		clamp(
-			(zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
+			(pow(tex2D(sAO, uv + mv.xy).r, aoStrength) * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
 			+ zfw::getAlbedo(uv) * reflBoost * tex2D(sGI, uv + mv.xy).rgb) - ambientRemovalStrength * ambientRemovalCol,
 		 0.0, 1000000.0),
 	1.);
