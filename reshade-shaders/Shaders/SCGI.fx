@@ -110,10 +110,10 @@ uniform float v_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6
 
 uniform int quality <ui_type = "combo"; ui_label = "GI quality"; ui_items = "Minimal\0Low\0Medium\0High\0Oh god\0";> = 0;
 
-uniform bool boostInterrefl = true;
+uniform float ambientRemovalStrength<ui_type = "slider"; ui_label = "Ambient Light liquadation strength";> = 0.1;
+uniform float3 ambientRemovalCol<ui_type = "color"; ui_label = "Ambient Light liquadation color";> = 1.0;
 
-//uniform float fovX <ui_type = "slider"; ui_min = 1.0; ui_max = 100.0; ui_label = "HFOV";> = 90.0;
-
+uniform float aoStrength <ui_type = "slider"; ui_min = 0.0; ui_max = 5.0;> = 1.0;
 
 const static float kernel[25] = {
     1.0/256.0, 1.0/64.0,  3.0/128.0, 1.0/64.0,  1.0/256.0,
@@ -142,14 +142,14 @@ const static float2 offset[25] = {
 
 // high value == safe
 float getRejectCond(float3 mv, float depthDiff, float nDiff) {
-	return mv.z * pow(nDiff, 3.0) * saturate(rcp(depthDiff + 0.0001));
+	return mv.z * pow(nDiff, 3.0) * saturate(rcp(depthDiff  * 1000.0 + 0.0001));
 }
 
 // NOTES FROM MARTY:
 // - Relax normal guide on really small depth delta -- ToDo?
 float4 atrous(sampler input, float2 texcoord, float level) {
 	uint accumL = tex2D(sAccumL, texcoord);
-	bool reject = accumL == 0u;
+	bool reject = accumL < 2u;
 	
 	float4 noisy = tex2D(input, texcoord);
 	float variance = tex2Dlod(input, float4(texcoord, 0.0, reject ? 16.0 : 1.0)).w;
@@ -169,7 +169,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		float4 t = noisy - ctmp;
 
 		float dist2 = dot(t.rgb, t.rgb); // do NOT guide with variance!
-		float c_w = min(exp(-dist2 * sqrt(accumL) / (v_phi * variance + 0.01)), 1.0) + 0.08;
+		float c_w = min(exp(-dist2 * accumL / (v_phi * variance + 0.01)), 1.0) + 0.2;
 		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
@@ -491,8 +491,10 @@ float prepMinZ3 __PXSDECL__ {
 float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	float3 mv = zfw::getVelocity(uv);
 	return float4(
-		zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
-		+ zfw::getAlbedo(uv) * (boostInterrefl ? reflBoost : 1.0) * tex2D(sGI, uv + mv.xy).rgb,
+		clamp(
+			(zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
+			+ zfw::getAlbedo(uv) * reflBoost * tex2D(sGI, uv + mv.xy).rgb) - ambientRemovalStrength * ambientRemovalCol,
+		 0.0, 1000000.0),
 	1.);
 }
 
@@ -544,16 +546,16 @@ float4 DN5(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	float4 gi = !noFilter ? tex2D(sDN1, uv) : tex2D(sGI, uv);
 	if (debug) return zfw::toneMap(gi.rgb * reflBoost + tex2D(sAO, uv).xxx * 0.1, 20.0);
-	return zfw::toneMap(gi.rgb * reflBoost * zfw::getAlbedo(uv) + tex2D(sAO, uv).r * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
+	return zfw::toneMap(gi.rgb * reflBoost * zfw::getAlbedo(uv) + pow(tex2D(sAO, uv).r, aoStrength) * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
 }
 
 void updateAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccum : SV_Target0) {
 	float3 mv = zfw::getVelocity(uv);
 	
-	float depthDelta = zfw::getDepth(uv - mv.xy) - tex2D(sPrevD, uv).x;
+	float depthDelta = zfw::getDepth(uv) - tex2D(sPrevD, uv + mv.xy).x;
 	float depthDiff = abs(depthDelta);
 	
-	float nDiff = saturate(dot(zfw::getNormal(uv - mv.xy), tex2D(sPrevN, uv).xyz));
+	float nDiff = saturate(dot(zfw::getNormal(uv), tex2D(sPrevN, uv + mv.xy).xyz));
 	float rej = getRejectCond(mv, depthDiff, nDiff);
 	
 	// :)
@@ -575,7 +577,7 @@ float saveForRejectZ(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Targe
 }
 
 float4 saveForRejectN(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return zfw::getNormal(uv).xyzz;
+	return float4(zfw::getNormal(uv).xyz, 1.0);
 }
 
 technique SCGI {
