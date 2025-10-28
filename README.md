@@ -7,7 +7,8 @@ Zenteon - https://www.zenteon.co/ - https://github.com/Zenteon
 
 Marty McFly/Pascal Gilcher - https://www.martysmods.com - https://github.com/martymcmodding
 
-1. SCAO v2.0
+1. SCAO v2.0<img width="512" height="512" alt="OrangeSlice" src="https://github.com/user-attachments/assets/a9306f03-e6a1-4ca4-b72d-8d496cf6d8e2" />
+
    
 <img width="3439" height="1439" alt="image" src="https://github.com/user-attachments/assets/cde9a2ac-8478-40d1-9688-c13cd3a940b1" />
 
