@@ -33,49 +33,68 @@ texture irradiance { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Forma
 sampler sIrradiance { Texture = irradiance; AddressU = BORDER; AddressV = BORDER; };
 
 texture GI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sGI { Texture = GI; AddressU = CLAMP; AddressV = CLAMP; };
+sampler sGI { Texture = GI; AddressU = CLAMP; AddressV = CLAMP; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
 
 texture GI2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sGI2 { Texture = GI2; AddressU = CLAMP; AddressV = CLAMP; };
+sampler sGI2 { Texture = GI2; AddressU = CLAMP; AddressV = CLAMP; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
 
 texture tAO { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
-sampler sAO { Texture = tAO; AddressU = CLAMP; AddressV = CLAMP; };
+sampler sAO { Texture = tAO; AddressU = CLAMP; AddressV = CLAMP; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
 
 texture tAOswap { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
-sampler sAOswap { Texture = tAOswap; AddressU = CLAMP; AddressV = CLAMP; };
+sampler sAOswap { Texture = tAOswap; AddressU = CLAMP; AddressV = CLAMP; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
 
 texture tLuminance2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
-sampler sLuminance2 { Texture = tLuminance2; };
+sampler sLuminance2 { Texture = tLuminance2; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
 
 texture tLuminance2swap { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
-sampler sLuminance2swap { Texture = tLuminance2swap; };
-
-texture tError { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
-sampler sError { Texture = tError; };
+sampler sLuminance2swap { Texture = tLuminance2swap; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
 
 texture tDN1 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sDN1 { Texture = tDN1; AddressU = BORDER; AddressV = BORDER; };
+sampler sDN1 { Texture = tDN1; AddressU = BORDER; AddressV = BORDER; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT;};
 
 texture tDN2 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sDN2 { Texture = tDN2; AddressU = BORDER; AddressV = BORDER; };
+sampler sDN2 { Texture = tDN2; AddressU = BORDER; AddressV = BORDER; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT;};
 
 // Optimization is fun asf.
 texture minZ { Width = BUFFER_WIDTH / 2; Height = BUFFER_HEIGHT / 2; Format = R16; };
 sampler sminZ { Texture = minZ; 
 	MagFilter = POINT;
 	MinFilter = POINT;
-	MipFilter = POINT; };
+	MipFilter = POINT; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT;};
 	
 texture minZ2 { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = R16; };
 sampler sminZ2 { Texture = minZ2; 
 	MagFilter = POINT;
 	MinFilter = POINT;
-	MipFilter = POINT; };
+	MipFilter = POINT; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT;};
 texture minZ3 { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16; };
 sampler sminZ3 { Texture = minZ3; 
 	MagFilter = POINT;
 	MinFilter = POINT;
-	MipFilter = POINT; };
+	MipFilter = POINT; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT;};
 	
 texture tPrevD { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16; };
 sampler sPrevD { Texture = tPrevD; 
@@ -90,19 +109,26 @@ sampler sPrevN { Texture = tPrevN;
 	MipFilter = POINT; };
 
 texture tAccumL { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R32U; };
-sampler2D<uint> sAccumL { Texture = tAccumL; };
+sampler2D<uint> sAccumL { Texture = tAccumL; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT;};
 
 texture tAccumLswap { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R32U; };
-sampler2D<uint> sAccumLswap { Texture = tAccumLswap; };
+sampler2D<uint> sAccumLswap { Texture = tAccumLswap; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT; };
 
 
 uniform int framecount < source = "framecount"; >;
 
 uniform bool debug <ui_label = "Debug view"; hidden = false;> = false;
 uniform bool noFilter <ui_label = "Screw denoising!"; hidden = true;> = false;
-uniform float reflBoost <ui_type = "slider"; ui_label = "Strength"; ui_tooltip = "An all-in-one strength parameter. Minimal is very cheap, but looks bad. Low is the minimum intended playable experience"; ui_max = 16.0; ui_min = 0.001;> = 1.0;
+uniform float reflBoost <ui_type = "slider"; ui_label = "Log Strength"; ui_tooltip = "An all-in-one strength parameter. Minimal is very cheap, but looks bad. Low is the minimum intended playable experience"; ui_max = 6.0; ui_min = 0.001;> = 1.0;
 uniform float THICKNESS <ui_type = "slider"; ui_label = "Thickness"; ui_tooltip = "SCGI uses a thickness heuristic. Don't set this too high or low!"; ui_min = 2.0; ui_max = 16.0;> = 2.0; 
 uniform bool displayError<hidden = true;> = false;
+
+uniform float tonemapperWP <ui_type = "slider"; ui_label = "Tonemapper Whitepoint"; ui_tooltip = "Ad-hoc brightness scaling for HDR data"; ui_min = 1.0; ui_max = 20.0;> = 20.0; 
+
 
 uniform float n_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Normal avoiding";> = 0.1;
 uniform float p_phi <hidden = true; ui_type = "slider"; ui_min = 0.0; ui_max = 6.0; ui_label = "Depth avoiding";> = 1.0;
@@ -141,18 +167,15 @@ const static float2 offset[25] = {
 #define __PXSDECL__ (float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 
 // high value == safe
-float getRejectCond(float3 mv, float depthDiff, float nDiff) {
-	return mv.z * pow(nDiff, 3.0) * saturate(rcp(depthDiff  * 1000.0 + 0.0001));
+float getRejectCond(float3 mv, float nDiff) {
+	return 0.97 * mv.z * pow(nDiff, 5.0);
 }
 
 // NOTES FROM MARTY:
 // - Relax normal guide on really small depth delta -- ToDo?
 float4 atrous(sampler input, float2 texcoord, float level) {
-	uint accumL = tex2D(sAccumL, texcoord);
-	bool reject = accumL < 2u;
-	
 	float4 noisy = tex2D(input, texcoord);
-	float variance = tex2Dlod(input, float4(texcoord, 0.0, reject ? 16.0 : 1.0)).w;
+	float variance = tex2Dlod(input, float4(texcoord, 0.0, 0.0)).w;
 	float3 normal = zfw::getNormal(texcoord);
 	float3 pos = zfw::uvToView(texcoord);
 	
@@ -169,7 +192,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		float4 t = noisy - ctmp;
 
 		float dist2 = dot(t.rgb, t.rgb); // do NOT guide with variance!
-		float c_w = min(exp(-dist2 * accumL / (v_phi * variance + 0.01)), 1.0) + 0.2;
+		float c_w = min(exp(-dist2 / (v_phi * variance + 0.03)), 1.0);
 		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
@@ -259,6 +282,8 @@ namespace stepData {
 // This code assumes lambertian diffuse, but technically it could be extended to specular, or any other lobe. 
 // Since this is basically importance-sampling lambert, you'd need a bit of elbow grease to let it do, say, specular.
 float3 calculateIL(uint prevBF, uint currBF, float3 positionVS, float3 nF, float3 nS, float3 delta, float2 uv, float2 uvF, float3 samplePosVS) {
+	nF = samplePosVS > (1000.0 - 1.0) ? -normalize(samplePosVS) : nF;
+	
 	float3 di = tex2Dlod(sIrradiance, float4(uv, 0., 0.)).rgb; // theoretically the light, but BackBuf works fine, and is best we got.
 	
 	float deltaBF = ((float)countbits(currBF & ~prevBF)) / SECTORS; // difference of bitmasks. Gets us shadows, and is the similar to HBIL's weighting by the angle diff.
@@ -465,7 +490,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 	ao = 1.0 - ao / (float(SECTORS) * scgi_slices);
 	ao = positionVS.z > FAR_CLIP || ao < -0.001 ? 1.0 : ao;
 	
-	il /= scgi_slices;
+	il /= scgi_slices * getSliceCount();
 	il = positionVS.z > FAR_CLIP ? 0.0 : il;
 	return float4(il, ao);
 }
@@ -488,26 +513,44 @@ float prepMinZ3 __PXSDECL__ {
 	return min(min(z4.x, z4.y), min(z4.z, z4.w));
 }
 
+
+uniform float albedont <ui_type = "slider";
+		ui_min = 0.0;
+		ui_max = 1.0;
+		ui_label = "Why";
+	> = 0.8;
+
 float4 save(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	float3 mv = zfw::getVelocity(uv);
+	float3 albedo = lerp(zfw::getAlbedo(uv), pow(tex2D(ReShade::BackBuffer, uv).rgb, 2.2), albedont);
+	
 	return float4(
 		clamp(
-			(pow(tex2D(sAO, uv + mv.xy).r, aoStrength) * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.) 
-			+ zfw::getAlbedo(uv) * reflBoost * tex2D(sGI, uv + mv.xy).rgb) - ambientRemovalStrength * ambientRemovalCol,
+			(pow(tex2D(sAO, uv + mv.xy).r, aoStrength) * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, tonemapperWP) 
+			+ albedo * exp2(reflBoost) * tex2D(sGI, uv + mv.xy).rgb) - ambientRemovalStrength * ambientRemovalCol,
 		 0.0, 1000000.0),
 	1.);
 }
 
 
 float getHistorySize(float2 uv) {
-	return 0.96 * rcp(1.0 + float(tex2D(sAccumL, uv)));
+	return rcp(1.0 + float(tex2D(sAccumL, uv)));
 }
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float AO : SV_Target1, out float luminanceSquared : SV_Target2, out float sigma2 : SV_Target3) {
 	GI = calcGI(uv, vpos.xy);
-	float3 mv = zfw::getVelocity(uv);
 	
-	float historySize = getHistorySize(uv); 
+	float3 mv = zfw::getVelocity(uv);
+
+	float nDiff = saturate(dot(zfw::getNormal(uv), tex2D(sPrevN, uv + mv.xy).xyz));
+	float rej = getRejectCond(mv, nDiff);
+	
+	// rejection weirdness from zenteon as per usual
+	float PD = tex2D(sPrevD, uv + mv.xy).x;
+	float CD = zfw::getDepth(uv);
+	rej *= min(saturate(pow(PD / CD, 10.0)), saturate(pow(CD / PD, 5.0)));
+
+	float historySize = getHistorySize(uv) * rej; 
 	float accumulatedAO = tex2D(sAOswap, uv + mv.xy).r;
 	AO = lerp(accumulatedAO, GI.a, historySize);
 	
@@ -536,34 +579,69 @@ float4 DN3(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 }
 
 float4 DN4(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(sDN1, uv, 3);
+	return atrous(sDN1, uv, 1);
 }
 
 float4 DN5(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	return atrous(sDN2, uv, 2); // lower artifacts?
+	return atrous(sDN2, uv, 0);
 }
 
+float4 MedianPS(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+	// no median yet :(
+	return clamp(tex2D(sDN1, uv), 0., 40.0);
+}
+
+#define cbrtf(x) pow(x, 0.333333)
+float3 linear_srgb_to_oklab(float3 c) 
+{
+    float l = 0.4122214708f * c.r + 0.5363325363f * c.g + 0.0514459929f * c.b;
+	float m = 0.2119034982f * c.r + 0.6806995451f * c.g + 0.1073969566f * c.b;
+	float s = 0.0883024619f * c.r + 0.2817188376f * c.g + 0.6299787005f * c.b;
+
+    float l_ = cbrtf(l);
+    float m_ = cbrtf(m);
+    float s_ = cbrtf(s);
+
+    return float3 (
+        0.2104542553f*l_ + 0.7936177850f*m_ - 0.0040720468f*s_,
+        1.9779984951f*l_ - 2.4285922050f*m_ + 0.4505937099f*s_,
+        0.0259040371f*l_ + 0.7827717662f*m_ - 0.8086757660f*s_
+    );
+}
+
+float3 oklab_to_linear_srgb(float3 c) 
+{
+    float l_ = c.r + 0.3963377774f * c.g + 0.2158037573f * c.b;
+    float m_ = c.r - 0.1055613458f * c.g - 0.0638541728f * c.b;
+    float s_ = c.r - 0.0894841775f * c.g - 1.2914855480f * c.b;
+
+    float l = l_*l_*l_;
+    float m = m_*m_*m_;
+    float s = s_*s_*s_;
+
+    return float3 (
+		+4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s,
+		-1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s,
+		-0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s
+    );
+}
+	
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
 	float4 gi = !noFilter ? tex2D(sDN1, uv) : tex2D(sGI, uv);
-	if (debug) return zfw::toneMap(gi.rgb * reflBoost + tex2D(sAO, uv).xxx * 0.1, 20.0);
-	return zfw::toneMap(gi.rgb * reflBoost * zfw::getAlbedo(uv) + pow(tex2D(sAO, uv).r, aoStrength) * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, 20.0), 20.0);
+	float3 albedo = lerp(zfw::getAlbedo(uv), pow(tex2D(ReShade::BackBuffer, uv).rgb, 2.2), albedont);
+	
+	
+	if (debug) return zfw::toneMap(gi.rgb * reflBoost + tex2D(sAO, uv).xxx * 0.1, tonemapperWP);
+	return zfw::toneMap(gi.rgb * exp2(reflBoost) * albedo + pow(tex2D(sAO, uv).r, aoStrength) * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, tonemapperWP), 20.0);
 }
 
 void updateAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccum : SV_Target0) {
-	float3 mv = zfw::getVelocity(uv);
-	
-	float depthDelta = zfw::getDepth(uv) - tex2D(sPrevD, uv + mv.xy).x;
-	float depthDiff = abs(depthDelta);
-	
-	float nDiff = saturate(dot(zfw::getNormal(uv), tex2D(sPrevN, uv + mv.xy).xyz));
-	float rej = getRejectCond(mv, depthDiff, nDiff);
-	
-	// :)
-	curAccum = uint(ceil(tex2D(sAccumLswap, uv) * rej)) + 1u;
+	curAccum = tex2D(sAccumLswap, uv) + 1u;
 }
 
 void updateAccumSwap(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccumSwap : SV_Target0) {
-	curAccumSwap = clamp(tex2D(sAccumL, uv), 0u, 64u);
+	curAccumSwap = clamp(tex2D(sAccumL, uv), 0u, 64u); // hopefully doesn't bork everything
+
 }
 
 void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1, out float AO : SV_Target2) {
@@ -606,8 +684,7 @@ technique SCGI {
 		PixelShader = main;
 		RenderTarget0 = GI;
 		RenderTarget1 = tAO;
-		RenderTarget2 = tLuminance2; 
-		RenderTarget3 = tError;
+		RenderTarget2 = tLuminance2;
 	}
 	pass Denoise {
 		VertexShader = PostProcessVS;
@@ -633,6 +710,11 @@ technique SCGI {
 		VertexShader = PostProcessVS;
 		PixelShader = DN5;
 		RenderTarget = tDN1;
+	}
+	pass Median {
+		VertexShader = PostProcessVS;
+		PixelShader = MedianPS;
+		RenderTarget = tDN2;
 	}
 	pass Blend {
 		VertexShader = PostProcessVS;
