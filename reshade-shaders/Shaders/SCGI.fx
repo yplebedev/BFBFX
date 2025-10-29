@@ -118,10 +118,20 @@ sampler2D<uint> sAccumLswap { Texture = tAccumLswap; MagFilter = POINT;
 	MinFilter = POINT;
 	MipFilter = POINT; };
 
+texture tRej { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
+sampler sRej { Texture = tRej; AddressU = BORDER; AddressV = BORDER; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT;};
+
+texture tRejExpanded { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
+sampler sRejExpanded { Texture = tRejExpanded; AddressU = BORDER; AddressV = BORDER; MagFilter = POINT;
+	MinFilter = POINT;
+	MipFilter = POINT;};
+
 
 uniform int framecount < source = "framecount"; >;
 
-uniform bool debug <ui_label = "Debug view"; hidden = false;> = false;
+uniform uint debug <ui_label = "Debug View"; ui_type = "combo"; ui_items = "None\0GI\0AO\0Rejection\0Denoise-less\0Albedo\0";> = 0;
 uniform bool noFilter <ui_label = "Screw denoising!"; hidden = true;> = false;
 uniform float reflBoost <ui_type = "slider"; ui_label = "Log Strength"; ui_tooltip = "An all-in-one strength parameter. Minimal is very cheap, but looks bad. Low is the minimum intended playable experience"; ui_max = 6.0; ui_min = 0.001;> = 1.0;
 uniform float THICKNESS <ui_type = "slider"; ui_label = "Thickness"; ui_tooltip = "SCGI uses a thickness heuristic. Don't set this too high or low!"; ui_min = 2.0; ui_max = 16.0;> = 2.0; 
@@ -166,16 +176,11 @@ const static float2 offset[25] = {
 
 #define __PXSDECL__ (float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 
-// high value == safe
-float getRejectCond(float3 mv, float nDiff) {
-	return 0.97 * mv.z * pow(nDiff, 5.0);
-}
-
 // NOTES FROM MARTY:
 // - Relax normal guide on really small depth delta -- ToDo?
 float4 atrous(sampler input, float2 texcoord, float level) {
 	float4 noisy = tex2D(input, texcoord);
-	float variance = tex2Dlod(input, float4(texcoord, 0.0, 0.0)).w;
+	float variance = noisy.w;
 	float3 normal = zfw::getNormal(texcoord);
 	float3 pos = zfw::uvToView(texcoord);
 	
@@ -192,7 +197,7 @@ float4 atrous(sampler input, float2 texcoord, float level) {
 		float4 t = noisy - ctmp;
 
 		float dist2 = dot(t.rgb, t.rgb); // do NOT guide with variance!
-		float c_w = min(exp(-dist2 / (v_phi * variance + 0.03)), 1.0);
+		float c_w = min(exp(-dist2 / (v_phi * variance + 0.01)), 1.0);
 		
 		float3 ptmp = zfw::uvToView(uv);
 		t = pos - ptmp;
@@ -451,7 +456,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 	
 	float3 V = normalize(-positionVS);
 	float3 normalVS = zfw::getNormal(uv);
-	positionVS += normalVS * 0.001;
+	positionVS += normalVS * 0.0001;
 
     //float step = max(1.0, R / positionVS.z / (SCVBAO_STEPS + 1.0));
 	
@@ -485,7 +490,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 			il += stepData::getLighting(dir2); // wrong but fast
 		}
 		
-		ao += float(countbits(aoBF)) * (quality ? 0.5 : 1.0); // todo: ass
+		ao += float(countbits(aoBF));
 	}
 	ao = 1.0 - ao / (float(SECTORS) * scgi_slices);
 	ao = positionVS.z > FAR_CLIP || ao < -0.001 ? 1.0 : ao;
@@ -513,6 +518,34 @@ float prepMinZ3 __PXSDECL__ {
 	return min(min(z4.x, z4.y), min(z4.z, z4.w));
 }
 
+bool isOutside(float2 uv) {
+	return !any(abs(uv - 0.5) <= 0.5);
+}
+
+float prepRej __PXSDECL__ {
+	float3 mv = zfw::getVelocity(uv);
+
+	float nDiff = saturate(dot(zfw::getNormal(uv), tex2D(sPrevN, uv + mv.xy).xyz));
+	float rej = mv.z * pow(nDiff, 3.0);
+	
+	// rejection weirdness from zenteon as per usual
+	float PD = tex2D(sPrevD, uv + mv.xy).x;
+	float CD = zfw::getDepth(uv);
+	rej *= min(pow(saturate(PD / CD), 10.0), pow(saturate(CD / PD), 5.0));
+	
+	return rej;
+}
+
+float expandRej __PXSDECL__ {
+	float minRej = 1.0;
+	for (float x = -1.; x <= 1.; x++) {
+		for (float y = -1.; y <= 1.; y++) {
+			minRej = min(minRej, tex2Dfetch(sRej, vpos.xy + float2(x, y)).x);
+		}
+	}
+	
+	return minRej;
+}
 
 uniform float albedont <ui_type = "slider";
 		ui_min = 0.0;
@@ -541,16 +574,9 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Ta
 	GI = calcGI(uv, vpos.xy);
 	
 	float3 mv = zfw::getVelocity(uv);
-
-	float nDiff = saturate(dot(zfw::getNormal(uv), tex2D(sPrevN, uv + mv.xy).xyz));
-	float rej = getRejectCond(mv, nDiff);
 	
-	// rejection weirdness from zenteon as per usual
-	float PD = tex2D(sPrevD, uv + mv.xy).x;
-	float CD = zfw::getDepth(uv);
-	rej *= min(saturate(pow(PD / CD, 10.0)), saturate(pow(CD / PD, 5.0)));
-
-	float historySize = getHistorySize(uv) * rej; 
+	float rej = tex2D(sRejExpanded, uv).r;
+	float historySize = 0.97 * getHistorySize(uv) * rej;
 	float accumulatedAO = tex2D(sAOswap, uv + mv.xy).r;
 	AO = lerp(accumulatedAO, GI.a, historySize);
 	
@@ -559,8 +585,8 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Ta
 	
 	float luminance = dot(GI.rgb, float3(0.2126, 0.7152, 0.0722));
 	luminanceSquared = luminance * luminance;
-	float accumulatedLuminanceSquared = tex2D(sLuminance2swap, uv + mv.xy).r;
-	luminanceSquared = lerp(luminanceSquared, accumulatedLuminanceSquared, historySize);
+	float luminanceSquaredHistory = tex2D(sLuminance2swap, uv + mv.xy).r;
+	luminanceSquaredHistory = lerp(luminanceSquared, luminanceSquaredHistory, historySize);
 	
 	sigma2 = luminanceSquared - (luminance * luminance);
 	GI.a = sigma2;
@@ -627,12 +653,25 @@ float3 oklab_to_linear_srgb(float3 c)
 }
 	
 float3 blend(float4 vpos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-	float4 gi = !noFilter ? tex2D(sDN1, uv) : tex2D(sGI, uv);
+	float4 gi = tex2D(sDN2, uv);
 	float3 albedo = lerp(zfw::getAlbedo(uv), pow(tex2D(ReShade::BackBuffer, uv).rgb, 2.2), albedont);
 	
-	
-	if (debug) return zfw::toneMap(gi.rgb * reflBoost + tex2D(sAO, uv).xxx * 0.1, tonemapperWP);
-	return zfw::toneMap(gi.rgb * exp2(reflBoost) * albedo + pow(tex2D(sAO, uv).r, aoStrength) * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, tonemapperWP), 20.0);
+	switch (debug) {
+		case 0:
+			return zfw::toneMap(gi.rgb * exp2(reflBoost) * albedo + pow(tex2D(sAO, uv).r, aoStrength) * zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, tonemapperWP), tonemapperWP);
+		case 1:
+			return zfw::toneMap(gi.rgb * reflBoost + tex2D(sAO, uv).xxx * 0.1, tonemapperWP);
+		case 2:
+			return pow(tex2D(sAO, uv).xxx, aoStrength);
+		case 3:
+			return tex2D(sRejExpanded, uv).xxx;
+		case 4:
+			return zfw::toneMap(tex2D(sGI, uv).rgb * exp2(reflBoost) + pow(tex2D(sAO, uv).xxx, aoStrength) * 0.1, tonemapperWP);
+		case 5:
+			return pow(albedo, 0.4545);
+		default:
+			return 0; //unreachable >:(
+	}
 }
 
 void updateAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccum : SV_Target0) {
@@ -641,7 +680,8 @@ void updateAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAc
 
 void updateAccumSwap(float4 vpos : SV_Position, float2 uv : TEXCOORD, out uint curAccumSwap : SV_Target0) {
 	curAccumSwap = clamp(tex2D(sAccumL, uv), 0u, 64u); // hopefully doesn't bork everything
-
+	
+	curAccumSwap *= uint(ceil(tex2D(sRejExpanded, uv).r));
 }
 
 void saveForAccum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 GI : SV_Target0, out float luma2 : SV_Target1, out float AO : SV_Target2) {
@@ -673,6 +713,16 @@ technique SCGI {
 		VertexShader = PostProcessVS;
 		PixelShader = prepMinZ3;
 		RenderTarget = minZ3;
+	}
+	pass PrepRej {
+		VertexShader = PostProcessVS;
+		PixelShader = prepRej;
+		RenderTarget = tRej;
+	}
+	pass ExpandRej {
+		VertexShader = PostProcessVS;
+		PixelShader = expandRej;
+		RenderTarget = tRejExpanded;
 	}
 	pass Save {
 		VertexShader = PostProcessVS;
