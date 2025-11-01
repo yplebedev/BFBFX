@@ -3,7 +3,7 @@
 
 // no point in mutation
 #define SECTORS 32
-#define power 1.3
+#define power 1.2
 
 uint sliceStepsAO(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, inout uint bitfield) {
 	[loop]
@@ -65,7 +65,7 @@ float calcAO(float2 uv, float2 vpos) {
 		float N = signN * acos(cosN);
 		
 		uint aoBF = 0;
-		float offset = max(random.y * step, length(BUFFER_PIXEL_SIZE));
+		float offset = max((random.y + 0.5) * step, length(BUFFER_PIXEL_SIZE)) / steps;
 		sliceStepsAO(positionVS, V, vpos, direction, offset, step, 1, N, aoBF);
 		sliceStepsAO(positionVS, V, vpos, -direction, offset, step, -1, N, aoBF);
 

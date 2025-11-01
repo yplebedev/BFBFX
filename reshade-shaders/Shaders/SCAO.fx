@@ -22,7 +22,7 @@ fastPS(blend) {
 	float3 BackBuf = zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, tonemapWhite);
 	
 	float3 mix = BackBuf * AO;
-	return float4(zfw::toneMap(mix, tonemapWhite), 1.0);
+	return float4(debug ? AO : zfw::toneMap(mix, tonemapWhite), 1.0);
 }
 
 technique SCAO techniqueDesc {
