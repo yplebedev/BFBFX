@@ -22,9 +22,9 @@ void swapAccum(pData, out uint swapped : SV_Target0) {
 		swapped = 0u;
 		return;
 	}
-	swapped = clamp(swapped, 1u, 64u); 
+	swapped = clamp(swapped, 1u, 256u); 
 }
 
 float getLerpWeight(float2 uv) {
-	return 0.98 * rcp(1.0 + float(tex2D(sAccumS, uv)));
+	return 0.9 * rcp(1.0 + float(tex2D(sAccumS, uv)));
 }
