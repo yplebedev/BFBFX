@@ -24,7 +24,7 @@ void incrementAccum(pData, out uint incremented : SV_Target0) {
 
 void swapAccum(pData, out uint swapped : SV_Target0) {
 	swapped = tex2D(sAccum, uv);
-	if (zfw::getVelocity(uv).z < 1.0) {
+	if (zfw::getVelocity(uv).z < 0.7) {
 		swapped = 0u;
 		return;
 	}

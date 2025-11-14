@@ -3,6 +3,7 @@
 #include "bfb_inc\macro.fxh"
 #include "bfb_inc\meta.fxh"
 #include "bfb_inc\VB.fxh"
+#include "bfb_inc\denoise.fxh"
 #include "bfb_inc\TAA.fxh"
 #include "bfb_inc\settings.fxh"
 
@@ -30,10 +31,14 @@ fastPS(swapAO) {
 	return tex2Dfetch(sAO, vpos.xy);
 }
 
+fastPS(denoise) {
+	return atrous(sAOs, uv, 0.);
+}
+
 fastPS(blend) {
 	bool useMip = tex2Dfetch(sAccumS, vpos.xy) < 4u;
 	float tonemapWhite = exp(tonemapWhite);
-	float AO = tex2Dlod(sAO, float4(uv.xy, 0., useMip * 2.0)).x;
+	float AO = tex2Dlod(sDN, float4(uv.xy, 0., useMip)).x;
 	AO = pow(AO, strength);
 	float3 BackBuf = zfw::toneMapInverse(tex2D(ReShade::BackBuffer, uv).rgb, tonemapWhite);
 	
@@ -70,6 +75,11 @@ technique SCAO techniqueDesc {
 		STDVS;
 		PSBind(swapAccum);
 		RT(tAccumS);
+	}
+	pass Denoise {
+		STDVS;
+		PSBind(denoise);
+		RT(tDN);
 	}
 	pass Blend {
 		STDVS;
