@@ -56,7 +56,7 @@ namespace zfw {
 	}
 	
 	
-	#define FOV (1.0 * 0.0174533 * 70.0)
+	#define FOV (1.0 * 0.0174533 * 90.0)
 	#define fl rcp(tan(0.5 * FOV))
 	
 	float3 uvzToView(float3 xyz)

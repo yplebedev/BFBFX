@@ -1,39 +1,28 @@
 #include "stbn.fxh"
 #include "settings.fxh"
 
-float getFastAsfDepth(float2 uv, float t) {
-	float res = 1.0; //default
-	
-	if (t < 32.0) {
-		res = zfw::getDepth(uv);
-	} else {
-		res = zfw::sampleDepth(uv, 1.);
-	}
-	
-	return res;
-}
-
 // no point in mutation
 #define SECTORS 32
 #define power 1.4
-uint sliceStepsAO(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, inout uint bitfield) {
+#define PI 3.14159265359
+
+uint sliceStepsAO(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, inout uint bitfield, float3 n) {
 	[loop]
     for (uint i = 0; i < steps; i++, t += step) {
         float2 samplePos = start + t * rayDir;
         samplePos = floor(samplePos) + 0.5;
         float2 samplePosUV = (samplePos.xy) / BUFFER_SCREEN_SIZE;
         
-        float2 range = saturate(samplePosUV * samplePosUV - samplePosUV);
-		bool is_outside = range.x != -range.y; //and of course if we are not inside we are outside. 	
-    	if (is_outside) break;
+        if (!any(abs(samplePosUV - 0.5) <= 0.5)) { break; };
         
-        float depth = getFastAsfDepth(samplePosUV, t);
+        
+        float depth = zfw::getDepth(samplePosUV);
         float3 samplePosVS = zfw::uvzToView(samplePosUV, depth);
         float3 delta = samplePosVS - positionVS;
         float thicknessModifier = clamp(samplePosVS.z * 0.1, 0.5, 1.2);
 	
 	    float2 fb = acos(float2(dot(normalize(delta), V), dot(normalize(delta + thickness * normalize(samplePosVS)), V)));
-	    fb = saturate(((samplingDirection * -fb) - N + acos(-1.0)/2) / acos(-1.0));
+	    fb = saturate(((samplingDirection * -fb) - N + PI/2) / PI);
 	    fb = fb.x > fb.y ? fb.yx : fb;
 	    fb = smoothstep(0., 1., fb); // cosine lobe for AO. Trick by Marty (https://www.martysmods.com/)
 	    
@@ -50,38 +39,39 @@ float calcAO(float2 uv, float2 vpos) {
 	
 	float z = zfw::getDepth(uv);
 	float3 positionVS = zfw::uvzToView(uv, z);
+	float dist = length(positionVS);
 	
 
 	float ao = 0.0;
-	
-	float3 V = normalize(-positionVS);
+	float3 V = -positionVS/dist;
 	float3 normalVS = zfw::getNormal(uv);
-	positionVS += 0.01 * normalVS;
+	positionVS *= 0.999; // something like intel XeGTAO line 283, why the fuck would it work better then the normal-based one? fuck if i know.
 	
-    float step = max(1.0, random.y *  clamp(radius / positionVS.z, steps, radius * 4) / (steps + 1.0));
+	float radius = distanceRadiusBoost ? radius * dist : radius;
+    float step = max(1.0, random.y * clamp(radius / dist, steps, radius * 4) / (steps + 1.0));
 		
 	[loop]	
 	for(float slice = 0.0; slice < 1.0; slice += 1.0 / slices) {
-		//          ?????????
-		float phi = 2.0 * acos(-1.0) * (slice + random.x);
+		float phi = 2.0 * 3.14159265359 * (slice + random.x);
 		float2 direction = float2(cos(phi), sin(phi));
 		
 		float3 directionF3 = float3(direction, 0.0);
 		float3 oDirV = directionF3 - dot(directionF3, V) * V;
 		float3 sliceN = cross(directionF3, V);
 		float3 projN = normalVS - sliceN * dot(normalVS, sliceN);
-		float cosN = saturate(dot(projN, V) / length(projN));
+		float projNlength = length(projN);
+		float cosN = saturate(dot(projN, V) / projNlength);
 		float signN = -sign(dot(projN, oDirV));
 
 		float N = signN * acos(cosN);
 		
 		uint aoBF = 0;
 		float offset = max(step, length(BUFFER_PIXEL_SIZE)) / steps;
-		sliceStepsAO(positionVS, V, vpos, direction, offset, step, 1, N, aoBF);
-		sliceStepsAO(positionVS, V, vpos, -direction, offset, step, -1, N, aoBF);
+		sliceStepsAO(positionVS, V, vpos, direction, offset, step, 1, N, aoBF, normalVS);
+		sliceStepsAO(positionVS, V, vpos, -direction, offset, step, -1, N, aoBF, normalVS);
 
-		ao += float(countbits(aoBF)) * length(projN);
+		ao += float(countbits(aoBF)) * projNlength;
 	}
 	ao = 1.0 - ao / (float(SECTORS) * slices);
-	return z < 0.001|| z == 1.0 || ao < -0.001 ? 1.0 : ao;
+	return z == 1.0 || ao < -0.001 ? 1.0 : ao;
 }
