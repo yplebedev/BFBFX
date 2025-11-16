@@ -6,6 +6,14 @@
 #define power 1.4
 #define PI 3.14159265359
 
+float getFastDepth(float2 uv, float t) {
+	if (t < 4.0) {
+		return zfw::getDepth(uv);
+	} else {
+		return zfw::sampleDepth(uv, 0.);
+	}
+}
+
 uint sliceStepsAO(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, inout uint bitfield, float3 n) {
 	[loop]
     for (uint i = 0; i < steps; i++, t += step) {
@@ -16,7 +24,7 @@ uint sliceStepsAO(float3 positionVS, float3 V, float2 start, float2 rayDir, floa
         if (!any(abs(samplePosUV - 0.5) <= 0.5)) { break; };
         
         
-        float depth = zfw::getDepth(samplePosUV);
+        float depth = getFastDepth(samplePosUV, t);
         float3 samplePosVS = zfw::uvzToView(samplePosUV, depth);
         float3 delta = samplePosVS - positionVS;
         float thicknessModifier = clamp(samplePosVS.z * 0.1, 0.5, 1.2);
