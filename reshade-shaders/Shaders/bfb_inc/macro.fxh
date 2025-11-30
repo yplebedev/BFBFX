@@ -18,3 +18,35 @@
 #define STDVS VertexShader = PostProcessVS
 #define PSBind(name) PixelShader = name
 #define RT(name) RenderTarget = name
+
+// c++ bs
+#define cbrtf(x) pow(x, 0.3333) 
+
+
+/*void denoise3(pData, out float4 result : SV_Target0, out float AO : SV_Target1) {
+	float variance = tex2D(sDNGI, uv).a;
+	float4 denoised = atrous_advanced(sDNGI, sDNAO, uv, 1, variance);
+	result = float4(denoised.rgb, variance);
+	AO = denoised.a;
+}*/
+#define SVGFDenoisePass(name, level, GIsam, varSam) void name(pData, out float4 result : SV_Target0, out float updatedVariance : SV_Target1) {\
+	float variance = tex2D(varSam, uv).r;\
+	float4 denoised = atrous_advanced(GIsam, varSam, uv, level, variance);\
+	result = denoised;\
+	updatedVariance = variance;\
+}
+
+#define SVGFDenoisePassInitial(name, level, GIsam, varSam) void name(pData, out float4 result : SV_Target0, out float updatedVariance : SV_Target1) {\
+	float variance = tex2Dlod(varSam, float4(uv, 0., 1.0)).r;\
+	float4 denoised = atrous_advanced(GIsam, varSam, uv, level, variance);\
+	result = denoised;\
+	updatedVariance = variance;\
+}
+
+
+#define SVGFBindDenoisePass(name, func, GItex, VarTex) pass name {\
+		STDVS;\
+		PSBind(func);\
+		RenderTarget0 = GItex;\
+		RenderTarget1 = VarTex;\
+	}

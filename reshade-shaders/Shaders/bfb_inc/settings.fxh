@@ -1,10 +1,10 @@
 #pragma once
 // hey :)
-// be VERY careful with these. I really, really advise you not to touch these either.
+// be VERY careful with these. I really, really advise you not to touch these.
 
 
-uniform float radius <ui_type = "slider"; ui_label = "Radius"; ui_tooltip = "Increases the effect scale"; ui_min = 500.0; ui_max = 16000.0;> = 2000.0;
-uniform bool distanceRadiusBoost <hidden = true; ui_type = "checkbox"; ui_label = "Decrease radius with distance";> = false;
+uniform float radius <ui_type = "slider"; ui_label = "Radius"; ui_tooltip = "Increases the effect scale"; ui_min = 10.0; ui_max = 600.0;> = 400.0;
+uniform bool distanceRadiusBoost <hidden = true; ui_type = "checkbox"; ui_label = "Decrease radius with distance";> = true;
 uniform uint steps <ui_type = "slider"; ui_label = "Steps"; ui_min = 1u; ui_max = 32u;> = 7u;
 uniform uint slices <ui_type = "slider"; ui_label = "Rays"; ui_min = 1u; ui_max = 8u;> = 1u;
 uniform float thickness <ui_type = "slider"; ui_label = "Thickness"; ui_min = 2.0; ui_max = 16.0;> = 2.0;

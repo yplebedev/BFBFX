@@ -14,3 +14,14 @@ float2 stbn(float2 p) {
 				  tex2Dfetch(sBN, ((p + xyOffset) % 64) + getTemporalOffset() * 64).x);
 	
 }
+
+
+
+float2 GRnoise(float2 xy) {  
+    const float2 igr2 = float2(0.754877666, 0.56984029);
+    const float g = 1.6180339887498948482;
+	const float a1 = 1.0 / g; 
+	
+    xy *= igr2;
+    return float2(frac(frac(xy.x + xy.y) + a1 * framecount), frac(frac(xy.x + xy.y) + a1 * (framecount + 100)));
+}
