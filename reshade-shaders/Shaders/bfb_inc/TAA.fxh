@@ -49,7 +49,7 @@ void incrementAccum(pData, out uint incremented : SV_Target0) {
 
 void swapAccum(pData, out uint swapped : SV_Target0) {
 	swapped = tex2D(sAccum, uv);
-	if (tex2D(sExpRejMask, uv).r < 0.3) {
+	if (tex2D(sExpRejMask, uv).r < 0.05) {
 		swapped = 1u; // if it runs after GI, one frame is always correct*
 		return;
 	}
@@ -86,7 +86,7 @@ fastPS(expand) {
 		for (int delY = -1; delY <= 1; delY++) {
 			float2 uvOffset = float2(delX, delY)*BUFFER_PIXEL_SIZE;
 			float3 mv = zfw::getVelocity(uv + uvOffset);
-			float w = mv.z * getNormalRejection(uv + uvOffset, mv.xy) * getZRejection(uv + uvOffset, mv.xy);
+			float w = mv.z * lerp(getNormalRejection(uv + uvOffset, mv.xy), 1.0, 0.98) * lerp(getZRejection(uv + uvOffset, mv.xy), 1.0, 0.98);
 			minW = min(minW, w);
 		}
 	}
