@@ -37,7 +37,7 @@
 }
 
 #define SVGFDenoisePassInitial(name, level, GIsam, varSam) void name(pData, out float4 result : SV_Target0, out float updatedVariance : SV_Target1) {\
-	float variance = tex2Dlod(varSam, float4(uv, 0., 1.0)).r;\
+	float variance = tex2Dlod(varSam, float4(uv, 0., 0.0)).r;\
 	float4 denoised = atrous_advanced(GIsam, varSam, uv, level, variance);\
 	result = denoised;\
 	updatedVariance = variance;\

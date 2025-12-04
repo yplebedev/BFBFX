@@ -116,6 +116,41 @@ void computeVariance(pData, out float variance : SV_Target0) {
 	float sumSquared = luma * luma;
 	float sumOfSquares = tex2D(sLumaSquaredTAA, uv).r;
 	variance = sumSquared - sumOfSquares;
+	
+	if (accumL <= 4u) {
+		// spatial estimate
+		sumOfSquares = 0.;
+		float savedLuma = luma;
+		luma = 0.;
+	
+		float3 normal = zfw::getNormal(uv);
+		float z = zfw::getDepth(uv);
+		
+		float cum_w = 0.;
+		for (int i = 0; i < 25; i++) {
+			float2 curruv = uv + offset[i] * ReShade::PixelSize;
+			
+			float luma_tmp = lin2ok(tex2Dlod(sGI, float4(curruv, 0., 0.)).rgb).r;
+			float luma_sq_tmp = tex2Dlod(sLumaSquared, float4(curruv, 0., 0.)).r;
+			
+			float3 N_tmp = zfw::getNormal(curruv);
+			float Z_tmp = zfw::getDepth(curruv);
+			
+			float normalW = pow(saturate(dot(normal, N_tmp)), n_phi);
+			
+			
+			float depthW = exp(-abs(z - Z_tmp) / (p_phi * abs(length(offset[i]) * (z - Z_tmp)) + epsilon)); // SVGF eq 3, hopefully correct.
+			
+			float lumW = exp(-abs(savedLuma - luma_tmp) / (c_phi + epsilon));
+			
+			float weight = normalW * depthW;
+			sumOfSquares += weight * kernel[i] * luma_sq_tmp;
+			luma += weight * kernel[i] * luma_tmp;
+			cum_w += weight * kernel[i];
+		}
+		
+		variance = luma * luma - sumOfSquares;
+	}
 }
 
 texture tVariance { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 3; };

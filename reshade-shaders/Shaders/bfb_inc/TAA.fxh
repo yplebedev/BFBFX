@@ -57,7 +57,12 @@ void swapAccum(pData, out uint swapped : SV_Target0) {
 }
 
 float getLerpWeight(float2 uv) {
-	return (1.0 - rcp(1.0 + float(tex2D(sAccumS, uv)))) * tex2D(sExpRejMask, uv).r;
+	float3 mv = zfw::getVelocity(uv);
+	float initial = (1.0 - rcp(1.0 + float(tex2D(sAccumS, uv)))) * tex2D(sExpRejMask, uv).r;
+	
+	initial = saturate(initial + 0.4) * 0.98;
+	
+	return initial * mv.z;
 }
 
 namespace FrameWork {
@@ -86,12 +91,12 @@ fastPS(expand) {
 		for (int delY = -1; delY <= 1; delY++) {
 			float2 uvOffset = float2(delX, delY)*BUFFER_PIXEL_SIZE;
 			float3 mv = zfw::getVelocity(uv + uvOffset);
-			float w = mv.z * lerp(getNormalRejection(uv + uvOffset, mv.xy), 1.0, 0.98) * lerp(getZRejection(uv + uvOffset, mv.xy), 1.0, 0.98);
+			float w = getNormalRejection(uv + uvOffset, mv.xy) * getZRejection(uv + uvOffset, mv.xy);
 			minW = min(minW, w);
 		}
 	}
 	
-	return minW * 0.99;
+	return minW;
 }
 
 void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Target1) {
