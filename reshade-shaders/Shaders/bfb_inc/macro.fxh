@@ -50,3 +50,12 @@
 		RenderTarget0 = GItex;\
 		RenderTarget1 = VarTex;\
 	}
+	
+// hilariously borked, do not use,	
+/*#define KERNEL_FIND_MIN(size_r, type, type_swizzle, sam, uv) 
+		type minimum = 2e16;\
+		for(int dx = -size_r; dx <= size_r; dx++) {\
+			for(int dy = -size_r; dy <= size_r; dy++) {\
+				minimum = min(tex2Doffset(sam, uv, int2(dx, dy)).type_swizzle, minimum);\
+			}\
+		}\*/

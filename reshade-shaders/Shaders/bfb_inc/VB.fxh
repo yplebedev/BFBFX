@@ -25,7 +25,7 @@ float getFastDepthPlusPlus(float2 uv, float LOD) {
 	}
 }
 
-
+#ifndef GI_D
 uint sliceStepsAO(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, inout uint bitfield, float3 n) {
 	[loop]
     for (uint i = 0; i < steps; i++, t += step) {
@@ -92,6 +92,7 @@ float calcAO(float2 uv, float2 vpos) {
 	ao = 1.0 - ao / (float(SECTORS) * slices);
 	return z == 1.0 || ao < -0.001 ? 1.0 : ao;
 }
+#endif
 
 // GI!
 uint sliceStepsGI(float3 positionVS, float3 V, float2 start, float2 rayDir, float t, float step, float samplingDirection, float N, inout uint bitfield, float3 n, inout float3 GI) {
@@ -153,7 +154,7 @@ float4 calcGI(float2 uv, float2 vpos) {
 	
 	
 	
-    float step = max(1.0, random.y * clamp(sqrt(length(BUFFER_SCREEN_SIZE)), steps, radius * 4) / (steps + 1.0));
+    float step = max(1.0, random.y * sqrt(length(BUFFER_SCREEN_SIZE)) / (steps + 1.0));
 		
 	[loop]	
 	for(float slice = 0.0; slice < 1.0; slice += 1.0 / slices) {

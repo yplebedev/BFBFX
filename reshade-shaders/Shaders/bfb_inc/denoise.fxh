@@ -19,7 +19,7 @@ static const float2 offset[25] = {
 #define c_phi 4.0
 #define n_phi 128.0
 #define p_phi 1.0
-#define epsilon 0.2
+#define epsilon 0.0001
 
 
 // AO

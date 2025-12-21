@@ -1,5 +1,6 @@
 #pragma once
 #include "ReShade.fxh"
+#include "bfb_inc\settings.fxh"
 
 texture tExpRejMask { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
 sampler sExpRejMask { Texture = tExpRejMask; };
@@ -49,20 +50,18 @@ void incrementAccum(pData, out uint incremented : SV_Target0) {
 
 void swapAccum(pData, out uint swapped : SV_Target0) {
 	swapped = tex2D(sAccum, uv);
-	if (tex2D(sExpRejMask, uv).r < 0.05) {
+	if (tex2D(sExpRejMask, uv).r < 0.6) {
 		swapped = 1u; // if it runs after GI, one frame is always correct*
 		return;
 	}
-	swapped = clamp(swapped, 1u, 256u); 
+	swapped = clamp(swapped, 1u, 64u*2u); 
 }
 
 float getLerpWeight(float2 uv) {
 	float3 mv = zfw::getVelocity(uv);
-	float initial = (1.0 - rcp(1.0 + float(tex2D(sAccumS, uv)))) * tex2D(sExpRejMask, uv).r;
 	
-	initial = saturate(initial + 0.4) * 0.98;
 	
-	return initial * mv.z;
+	return mv.z * (1.0 - rcp(1.0 + float(tex2D(sAccumS, uv))));
 }
 
 namespace FrameWork {
@@ -91,7 +90,7 @@ fastPS(expand) {
 		for (int delY = -1; delY <= 1; delY++) {
 			float2 uvOffset = float2(delX, delY)*BUFFER_PIXEL_SIZE;
 			float3 mv = zfw::getVelocity(uv + uvOffset);
-			float w = getNormalRejection(uv + uvOffset, mv.xy) * getZRejection(uv + uvOffset, mv.xy);
+			float w = mv.z;
 			minW = min(minW, w);
 		}
 	}
@@ -102,8 +101,32 @@ fastPS(expand) {
 void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Target1) {
 	float3 mv = zfw::getVelocity(uv);
 	float weight = getLerpWeight(uv);
+	float4 history = tex2D(sGIs, uv + mv.xy);
 	
-	resolved = lerp(tex2D(sGI, uv), tex2D(sGIs, uv + mv.xy), weight);
+	#ifdef GI_D
+		const int size_r = 3;
+		float3 minimum = 2e16f;
+		float3 maximum = -2e16f;
+		
+		for(int dx = -size_r; dx <= size_r; dx++) {
+			for(int dy = -size_r; dy <= size_r; dy++) {
+				float3 value = tex2Doffset(sGI, uv, int2(dx, dy)).rgb;
+				minimum = min(value, minimum);
+				maximum = max(value, maximum);
+			}
+		}
+		
+		float3 midpoint = lerp(minimum, maximum, 0.5);
+		maximum = lerp(midpoint, maximum, 1.2); // overbright = much more visible noise
+		minimum = lerp(midpoint, minimum, 1.5); // darker = ok, not too bad
+		
+		
+		if (do_clamp) {
+			history.rgb = clamp(history.rgb, minimum, maximum);
+		}
+	#endif
+	
+	resolved = lerp(tex2D(sGI, uv), history, weight);
 	sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight);
 }
 

@@ -1,3 +1,4 @@
+#include "bfb_inc\GI.fxh"
 #include "ReShade.fxh"
 #include "bfb_inc\FrameworkResources.fxh"
 #include "bfb_inc\macro.fxh"
@@ -22,19 +23,21 @@ void swapGI(pData, out float4 GI : SV_Target0, out float lumaSquared : SV_Target
 SVGFDenoisePassInitial(denoise0, 0, sTAA, sVariance)
 SVGFDenoisePass(denoise1, 1, sDNGI, sVarianceS)
 SVGFDenoisePass(denoise2, 2, sDNGIs, sVariance)
-SVGFDenoisePass(denoise3, 3, sDNGI, sVarianceS)
+SVGFDenoisePass(denoise3, 1, sDNGI, sVarianceS)
+SVGFDenoisePass(denoise4, 0, sDNGIs, sVariance)
+
 
 fastPS(blend) {
 	float tonemapWhite = exp(tonemapWhite);
 	
-	float4 light = tex2D(sDNGIs, uv);
+	float4 light = tex2D(sDNGI, uv);
 
 	float3 BackBuf = tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb;	
 	float3 HDR = zfw::toneMapInverse(BackBuf, 10.0);
 	
-	float error = tex2D(sVariance, uv).x;
+	float error = tex2D(sVarianceS, uv).x;
 	
-	float3 albedo = lerp(zfw::getAlbedo(uv), pow(BackBuf, 2.2), 0.5);
+	float3 albedo = lerp(zfw::getAlbedo(uv), pow(BackBuf, 2.2), protect);
 	return float4(zfw::toneMap(debug ? light.rgb + light.a * 0.01 : light.rgb * albedo * strength + HDR * light.a, 10.0), 1.0);
 }
 
@@ -95,6 +98,12 @@ technique SCGI techniqueGIDesc {
 		PSBind(denoise3);
 		RenderTarget0 = tDNGIs;
 		RenderTarget1 = tVariance;
+	}
+	pass Denoise4 {
+		STDVS;
+		PSBind(denoise4);
+		RenderTarget0 = tDNGI;
+		RenderTarget1 = tVarianceS;
 	}
 	pass IncrementAccumulation {
 		STDVS;
