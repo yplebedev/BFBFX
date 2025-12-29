@@ -143,12 +143,14 @@ void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Ta
 	float weight = getLerpWeight(uv);
 	float4 history = tex2D(sGIs, uv + mv.xy);
 	
-	#ifdef GI_D
-		resolved = lerp(tex2D(sGI, uv), history, weight);
-		sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight); // initial estimate, replaced later
+	resolved = lerp(tex2D(sGI, uv), history, weight);
+	sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight); // initial estimate, replaced later
 	
-		float variance = (lin2ok(resolved).r * lin2ok(resolved).r) - (sumOfSquares.r);
-		float sigma = sqrt(variance);
+	float variance = (lin2ok(resolved.rgb).r * lin2ok(resolved.rgb).r) - (sumOfSquares.r);
+	float sigma = sqrt(variance);
+	
+	#ifdef GI_D
+		
 		
 		const int size_r = 2;
 		float3 minimum = 2e16f;

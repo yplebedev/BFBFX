@@ -16,7 +16,7 @@ static const float2 offset[25] = {
 };
 
 // agnosticism along color, normals and pos. inverse for advanced.
-#define c_phi 4.0
+#define c_phi 0.0001
 #define n_phi 128.0
 #define p_phi 1.0
 #define epsilon 0.0001
@@ -111,7 +111,7 @@ void computeVariance(pData, out float variance : SV_Target0) {
 			
 			float lumW = exp(-abs(savedLuma - luma_tmp) / (c_phi + epsilon));
 			
-			float weight = normalW * depthW;
+			float weight = normalW * depthW * max(0.001, lumW);
 			sumOfSquares += weight * kernel[i] * luma_sq_tmp;
 			luma += weight * kernel[i] * luma_tmp;
 			cum_w += weight * kernel[i];
@@ -159,7 +159,7 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 		
 		float lumW = exp(-abs(lum - lum_tmp) / (c_phi * sqrt(variance) + epsilon));
 		
-		float weight = normalW * depthW;
+		float weight = normalW * depthW * max(0.001, lumW);
 		sum += float4(GI_tmp, AO_tmp) * weight * kernel[i];
 		sum_var += var_tmp * weight * kernel[i];
 		cum_w += weight * kernel[i];
