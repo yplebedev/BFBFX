@@ -16,7 +16,7 @@ static const float2 offset[25] = {
 };
 
 // agnosticism along color, normals and pos. inverse for advanced.
-#define c_phi 0.0001
+#define c_phi 4.0
 #define n_phi 128.0
 #define p_phi 1.0
 #define epsilon 0.0001
