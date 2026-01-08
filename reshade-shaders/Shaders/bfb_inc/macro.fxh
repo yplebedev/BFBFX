@@ -59,3 +59,4 @@
 				minimum = min(tex2Doffset(sam, uv, int2(dx, dy)).type_swizzle, minimum);\
 			}\
 		}\*/
+		

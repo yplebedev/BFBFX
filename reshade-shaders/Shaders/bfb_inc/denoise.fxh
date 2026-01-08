@@ -15,11 +15,11 @@ static const float2 offset[25] = {
     float2(-2.0,  2.0), float2(-1.0,  2.0), float2(0.0,  2.0), float2(1.0,  2.0), float2(2.0,  2.0)
 };
 
-// agnosticism along color, normals and pos. inverse for advanced.
-#define c_phi 4.0
+
+#define c_phi 0.3
 #define n_phi 128.0
 #define p_phi 1.0
-#define epsilon 0.0001
+#define epsilon 0.01
 
 
 // AO
@@ -131,13 +131,14 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 	float3 normal = zfw::getNormal(texcoord);
 	float4 GI = tex2D(sTAA, texcoord);
 	float z = zfw::getDepth(texcoord);
-	float lum = lin2ok(GI.rgb).x;
+	float lum = dot(GI.rgb, float3(0.2126, 0.7152, 0.0722));
 	
 	float4 sum = 0.0;
 	float sum_var = 0.0;
 	
 	float2 step = ReShade::PixelSize;
 	
+	float accumulation = float(tex2D(sAccum, texcoord).r);
 	
 	float cum_w = 0.0;
 	[unroll]
@@ -150,16 +151,16 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 		
 		float3 N_tmp = zfw::getNormal(uv);
 		float Z_tmp = zfw::getDepth(uv);
-		float lum_tmp = lin2ok(GI_tmp).x;
+		float lum_tmp = dot(GI_tmp.rgb, float3(0.2126, 0.7152, 0.0722));
 		
 		float normalW = pow(saturate(dot(normal, N_tmp)), n_phi);
 		
 		
 		float depthW = exp(-abs(z - Z_tmp) / (p_phi * abs(length(offset[i]) * (z - Z_tmp)) + epsilon)); // SVGF eq 3, hopefully correct.
 		
-		float lumW = exp(-abs(lum - lum_tmp) / (c_phi * sqrt(variance) + epsilon));
+		float lumW = exp(-abs(lum - lum_tmp) / (c_phi * sqrt(max(0.0, variance / (accumulation + 1e-6))) + epsilon));
 		
-		float weight = normalW * depthW * max(0.001, lumW);
+		float weight = normalW * depthW * lumW;
 		sum += float4(GI_tmp, AO_tmp) * weight * kernel[i];
 		sum_var += var_tmp * weight * kernel[i];
 		cum_w += weight * kernel[i];

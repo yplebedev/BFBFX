@@ -23,23 +23,35 @@ void swapGI(pData, out float4 GI : SV_Target0, out float lumaSquared : SV_Target
 SVGFDenoisePassInitial(denoise0, 0, sTAA, sVariance)
 SVGFDenoisePass(denoise1, 1, sDNGI, sVarianceS)
 SVGFDenoisePass(denoise2, 2, sDNGIs, sVariance)
-SVGFDenoisePass(denoise3, 1, sDNGI, sVarianceS)
-SVGFDenoisePass(denoise4, 0, sDNGIs, sVariance)
+SVGFDenoisePass(denoise3, 3, sDNGI, sVarianceS)
 
 
 fastPS(blend) {
 	float tonemapWhite = exp(tonemapWhite);
 	
-	float4 light = tex2D(sDNGI, uv);
+	float4 light = tex2D(sDNGIs, uv);
 
 	float3 BackBuf = tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb;	
 	float3 HDR = zfw::toneMapInverse(BackBuf, 10.0);
 	
-	float error = tex2D(sVarianceS, uv).x;
+	float error = tex2D(sVariance, uv).x;
 	
 	float3 albedo = lerp(zfw::getAlbedo(uv), pow(BackBuf, 2.2), protect);
 	return float4(zfw::toneMap(debug ? light.rgb + light.a * 0.01 : light.rgb * albedo * strength + HDR * light.a, 10.0), 1.0);
 }
+
+// note to UKN:
+// 	this is not "for poking" per se, but a small bit of shader code that should be !!excluded!! from public "compiled binaries",
+// 	and as such is all covered with preprocs. You may define it globaly, but tbch I have no clue what you'd get from that.
+#ifdef DEBUG_ADDON
+	texture tGIdbg { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+
+	fastPS(extraHighQuality) {
+		return calcGI(uv, vpos.xy, 1, 4);
+	}
+#endif
+
+
 
 technique SCGI techniqueGIDesc {
 	pass Expand {
@@ -58,6 +70,13 @@ technique SCGI techniqueGIDesc {
 		RenderTarget0 = tGI;
 		RenderTarget1 = tLumaSquared;
 	}
+	#ifdef DEBUG_ADDON
+		pass UltraHigh {
+			STDVS;
+			PSBind(extraHighQuality);
+			RT(tGIdbg);
+		}
+	#endif
 	pass ComputeVariance {
 		STDVS;
 		PSBind(computeVariance);
@@ -98,12 +117,6 @@ technique SCGI techniqueGIDesc {
 		PSBind(denoise3);
 		RenderTarget0 = tDNGIs;
 		RenderTarget1 = tVariance;
-	}
-	pass Denoise4 {
-		STDVS;
-		PSBind(denoise4);
-		RenderTarget0 = tDNGI;
-		RenderTarget1 = tVarianceS;
 	}
 	pass IncrementAccumulation {
 		STDVS;
