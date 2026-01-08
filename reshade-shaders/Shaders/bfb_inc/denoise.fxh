@@ -109,9 +109,8 @@ void computeVariance(pData, out float variance : SV_Target0) {
 			
 			float depthW = exp(-abs(z - Z_tmp) / (p_phi * abs(length(offset[i]) * (z - Z_tmp)) + epsilon)); // SVGF eq 3, hopefully correct.
 			
-			float lumW = exp(-abs(savedLuma - luma_tmp) / (c_phi + epsilon));
 			
-			float weight = normalW * depthW * max(0.001, lumW);
+			float weight = normalW * depthW;
 			sumOfSquares += weight * kernel[i] * luma_sq_tmp;
 			luma += weight * kernel[i] * luma_tmp;
 			cum_w += weight * kernel[i];
@@ -160,7 +159,7 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 		
 		float lumW = exp(-abs(lum - lum_tmp) / (c_phi * sqrt(max(0.0, variance / (accumulation + 1e-6))) + epsilon));
 		
-		float weight = normalW * depthW * lumW;
+		float weight = accumulation < 2.5 ? depthW * normalW : (normalW * depthW * lumW);
 		sum += float4(GI_tmp, AO_tmp) * weight * kernel[i];
 		sum_var += var_tmp * weight * kernel[i];
 		cum_w += weight * kernel[i];
