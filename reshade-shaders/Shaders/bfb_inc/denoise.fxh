@@ -120,6 +120,7 @@ void computeVariance(pData, out float variance : SV_Target0) {
 	}
 }
 
+
 texture tVariance { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 3; };
 sampler sVariance { Texture = tVariance; MinLOD = 0.0f; MaxLOD = 2.0f; };
 
@@ -157,7 +158,7 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 		
 		float depthW = exp(-abs(z - Z_tmp) / (p_phi * abs(length(offset[i]) * (z - Z_tmp)) + epsilon)); // SVGF eq 3, hopefully correct.
 		
-		float lumW = exp(-abs(lum - lum_tmp) / (c_phi * sqrt(max(0.0, variance / (accumulation + 1e-6))) + epsilon));
+		float lumW = exp(-abs(lum - lum_tmp) / (col * sqrt(max(0.0, variance / (accumulation + 1e-6))) + epsilon));
 		
 		float weight = accumulation < 2.5 ? depthW * normalW : (normalW * depthW * lumW);
 		sum += float4(GI_tmp, AO_tmp) * weight * kernel[i];

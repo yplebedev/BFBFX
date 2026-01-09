@@ -14,11 +14,11 @@ texture tAOs { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
 sampler sAOs { Texture = tAOs; };
 
 // GI
-texture tGI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };
-sampler sGI { Texture = tGI; MinLOD = 0.0f; MaxLOD = 3.0f;  };
+texture tGI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sGI { Texture = tGI; MinLOD = 0.0f; };
 
-texture tGIs { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sGIs { Texture = tGIs; };
+texture tGIs { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };
+sampler sGIs { Texture = tGIs; MaxLOD = 3.0f; };
 
 texture tTAA { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 6; };
 sampler sTAA { Texture = tTAA; MinLOD = 0.0f; MaxLOD = 5.0f; };
@@ -141,13 +141,13 @@ float3 tex2DoffsetLOD(sampler sam, float2 uv, int2 offset, float LOD) {
 void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Target1) {
 	float3 mv = zfw::getVelocity(uv);
 	float weight = getLerpWeight(uv);
-	float4 history = tex2D(sGIs, uv + mv.xy);
+	float4 history = tex2Dlod(sGIs, float4(uv + mv.xy, 0., mv.z < 0.8 ? 3.0 : 0.0));
 	
 	resolved = lerp(tex2D(sGI, uv), history, weight);
 	sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight); // initial estimate, replaced later
 	
-	float variance = (lin2ok(resolved.rgb).r * lin2ok(resolved.rgb).r) - (sumOfSquares.r);
-	float sigma = sqrt(variance);
+	float variance = (dot(resolved.rgb, float3(0.2126, 0.7152, 0.0722)) * dot(resolved.rgb, float3(0.2126, 0.7152, 0.0722))) - (sumOfSquares.r);
+	/*float sigma = sqrt(variance);
 	
 	#ifdef GI_D
 		
@@ -171,7 +171,7 @@ void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Ta
 	#endif
 	
 	resolved = lerp(tex2D(sGI, uv), history, weight);
-	sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight);
+	sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight);*/
 }
 
 

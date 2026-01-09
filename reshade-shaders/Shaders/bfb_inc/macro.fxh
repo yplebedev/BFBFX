@@ -36,10 +36,28 @@
 	updatedVariance = variance;\
 }
 
-#define SVGFDenoisePassInitial(name, level, GIsam, varSam) void name(pData, out float4 result : SV_Target0, out float updatedVariance : SV_Target1) {\
-	float variance = tex2Dlod(varSam, float4(uv, 0., 0.0)).r;\
+static const float GAUSS_3[9] = {
+    1/16f, 1/8f, 1/16f, 
+    1/8f, 1/4f, 1/8f, 
+    1/16f, 1/8f, 1/16f, 
+}; 
+
+float blur3x3_1(sampler input, float2 uv, float scale) {
+	float accum = 0;
+	for (int deltaX = -1; deltaX <= 1; deltaX++) {
+		for (int deltaY = -1; deltaY <= 1; deltaY++) {
+			float2 offset = ReShade::PixelSize * scale * float2(deltaX, deltaY);
+			accum += tex2Dlod(input, float4(uv + offset, 0., 0.)).r * GAUSS_3[(deltaX + 1) + 3*(deltaY + 1)];
+		}
+	}
+	return accum;
+}
+
+#define SVGFDenoisePassInitial(name, level, GIsam, varSam) void name(pData, out float4 result : SV_Target0, out float updatedVariance : SV_Target1, out float4 recurrent_history : SV_Target2) {\
+	float variance = blur3x3_1(varSam, uv, 1.0);\
 	float4 denoised = atrous_advanced(GIsam, varSam, uv, level, variance);\
 	result = denoised;\
+	recurrent_history = denoised;\
 	updatedVariance = variance;\
 }
 

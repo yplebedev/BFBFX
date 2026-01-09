@@ -11,7 +11,7 @@
 
 void main(pData, out float4 GI : SV_Target0, out float lumaSquared : SV_Target1) {
 	GI = calcGI(uv, vpos.xy);
-	float luma = lin2ok(GI.rgb).r;
+	float luma = dot(GI.rgb, float3(0.2126, 0.7152, 0.0722));
 	lumaSquared = luma * luma;
 }
 
@@ -37,7 +37,7 @@ fastPS(blend) {
 	float error = tex2D(sVariance, uv).x;
 	
 	float3 albedo = lerp(zfw::getAlbedo(uv), pow(BackBuf, 2.2), protect);
-	return float4(zfw::toneMap(debug ? light.rgb + light.a * 0.01 : light.rgb * albedo * strength + HDR * light.a, 10.0), 1.0);
+	return float4(zfw::toneMap(debug ? light.rgb + light.a * 0.01 : light.rgb * albedo * strength + HDR * pow(light.a, fuck_you_ukn), 10.0), 1.0);
 }
 
 // note to UKN:
@@ -70,35 +70,37 @@ technique SCGI techniqueGIDesc {
 		RenderTarget0 = tGI;
 		RenderTarget1 = tLumaSquared;
 	}
-	#ifdef DEBUG_ADDON
-		pass UltraHigh {
-			STDVS;
-			PSBind(extraHighQuality);
-			RT(tGIdbg);
-		}
-	#endif
-	pass ComputeVariance {
-		STDVS;
-		PSBind(computeVariance);
-		RT(tVariance);
-	}
-	pass TAA {
-		STDVS;
-		PSBind(TAA);
-		RenderTarget0 = tTAA;
-		RenderTarget1 = tLumaSquaredTAA;
-	}
 	pass swapGI {
 		STDVS;
 		PSBind(swapGI);
 		RenderTarget0 = tGIs;
 		RenderTarget1 = tLumaSquaredS;
 	}
+	pass ComputeVariance {
+		STDVS;
+		PSBind(computeVariance);
+		RT(tVariance);
+	}
+	/*#ifdef DEBUG_ADDON
+		pass UltraHigh {
+			STDVS;
+			PSBind(extraHighQuality);
+			RT(tGIdbg);
+		}
+	#endif*/
+	
+	pass TAA {
+		STDVS;
+		PSBind(TAA);
+		RenderTarget0 = tTAA;
+		RenderTarget1 = tLumaSquaredTAA;
+	}
 	pass Denoise0 {
 		STDVS;
 		PSBind(denoise0);
 		RenderTarget0 = tDNGI;
 		RenderTarget1 = tVarianceS;
+		//RenderTarget2 = tHistoryDenoised; 
 	}
 	pass Denoise1 {
 		STDVS;
