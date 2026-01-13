@@ -14,7 +14,7 @@ texture tAOs { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
 sampler sAOs { Texture = tAOs; };
 
 // GI
-texture tGI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+texture tGI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA32F; };
 sampler sGI { Texture = tGI; MinLOD = 0.0f; };
 
 texture tGIs { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };

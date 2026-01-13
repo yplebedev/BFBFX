@@ -44,10 +44,10 @@ fastPS(blend) {
 // 	this is not "for poking" per se, but a small bit of shader code that should be !!excluded!! from public "compiled binaries",
 // 	and as such is all covered with preprocs. You may define it globaly, but tbch I have no clue what you'd get from that.
 #ifdef DEBUG_ADDON
-	texture tGIdbg { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+	texture tGIdbg { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA32F; };
 
 	fastPS(extraHighQuality) {
-		return calcGI(uv, vpos.xy, 1, 4);
+		return calcGI(uv, vpos.xy, 1, 12);
 	}
 #endif
 
@@ -76,24 +76,24 @@ technique SCGI techniqueGIDesc {
 		RenderTarget0 = tGIs;
 		RenderTarget1 = tLumaSquaredS;
 	}
-	pass ComputeVariance {
-		STDVS;
-		PSBind(computeVariance);
-		RT(tVariance);
-	}
-	/*#ifdef DEBUG_ADDON
+	#ifdef DEBUG_ADDON
 		pass UltraHigh {
 			STDVS;
 			PSBind(extraHighQuality);
 			RT(tGIdbg);
 		}
-	#endif*/
+	#endif
 	
 	pass TAA {
 		STDVS;
 		PSBind(TAA);
 		RenderTarget0 = tTAA;
 		RenderTarget1 = tLumaSquaredTAA;
+	}
+	pass ComputeVariance {
+		STDVS;
+		PSBind(computeVariance);
+		RT(tVariance);
 	}
 	pass Denoise0 {
 		STDVS;

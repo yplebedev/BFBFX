@@ -127,6 +127,8 @@ sampler sVariance { Texture = tVariance; MinLOD = 0.0f; MaxLOD = 2.0f; };
 texture tVarianceS { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
 sampler sVarianceS { Texture = tVarianceS; };
 
+
+#ifdef GI_D
 float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, inout float variance) {
 	float3 normal = zfw::getNormal(texcoord);
 	float4 GI = tex2D(sTAA, texcoord);
@@ -168,3 +170,4 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 	variance = sum_var / cum_w;
 	return sum / cum_w;
 }
+#endif
