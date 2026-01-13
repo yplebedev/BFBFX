@@ -141,6 +141,7 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 	float2 step = ReShade::PixelSize;
 	
 	float accumulation = float(tex2D(sAccum, texcoord).r);
+	float3 mv = zfw::getVelocity(texcoord);
 	
 	float cum_w = 0.0;
 	[unroll]
@@ -160,9 +161,9 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 		
 		float depthW = exp(-abs(z - Z_tmp) / (p_phi * abs(length(offset[i]) * (z - Z_tmp)) + epsilon)); // SVGF eq 3, hopefully correct.
 		
-		float lumW = exp(-abs(lum - lum_tmp) / (col * sqrt(max(0.0, variance / (accumulation + 1e-6))) + epsilon));
+		float lumW = exp(-abs(lum - lum_tmp) / (col * sqrt(max(0.0001, variance / (accumulation + 1e-6))) + epsilon)); // max has an epsilon. I don't know why it needs one, but w/o it it explodes into NaNs at high smoothness.
 		
-		float weight = accumulation < 2.5 ? depthW * normalW : (normalW * depthW * lumW);
+		float weight = mv.z < 0.9 ? (depthW * normalW) : (normalW * depthW * lumW);
 		sum += float4(GI_tmp, AO_tmp) * weight * kernel[i];
 		sum_var += var_tmp * weight * kernel[i];
 		cum_w += weight * kernel[i];

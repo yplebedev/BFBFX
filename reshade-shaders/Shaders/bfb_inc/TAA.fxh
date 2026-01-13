@@ -85,7 +85,7 @@ void incrementAccum(pData, out uint incremented : SV_Target0) {
 
 void swapAccum(pData, out uint swapped : SV_Target0) {
 	swapped = tex2D(sAccum, uv);
-	if (tex2D(sExpRejMask, uv).r < 0.6) {
+	if (tex2D(sExpRejMask, uv).r < 0.8) {
 		swapped = 1u; // if it runs after GI, one frame is always correct*
 		return;
 	}
@@ -93,10 +93,8 @@ void swapAccum(pData, out uint swapped : SV_Target0) {
 }
 
 float getLerpWeight(float2 uv) {
-	float3 mv = zfw::getVelocity(uv);
-	
-	
-	return mv.z * (1.0 - rcp(1.0 + float(tex2D(sAccumS, uv))));
+	float cur_w = tex2D(sExpRejMask, uv).r;
+	return cur_w * (1.0 - rcp(1.0 + float(tex2D(sAccumS, uv))));
 }
 
 namespace FrameWork {

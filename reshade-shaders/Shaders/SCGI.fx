@@ -32,12 +32,12 @@ fastPS(blend) {
 	float4 light = tex2D(sDNGIs, uv);
 
 	float3 BackBuf = tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb;	
-	float3 HDR = zfw::toneMapInverse(BackBuf, 10.0);
+	float3 HDR = zfw::toneMapInverse(BackBuf, tonemapWhite);
 	
 	float error = tex2D(sVariance, uv).x;
 	
 	float3 albedo = lerp(zfw::getAlbedo(uv), pow(BackBuf, 2.2), protect);
-	return float4(zfw::toneMap(debug ? light.rgb + light.a * 0.01 : light.rgb * albedo * strength + HDR * pow(light.a, fuck_you_ukn), 10.0), 1.0);
+	return float4(zfw::toneMap(debug ? light.rgb + light.a * 0.01 : light.rgb * albedo * strength + HDR * pow(light.a, fuck_you_ukn), tonemapWhite), 1.0);
 }
 
 // note to UKN:
@@ -134,9 +134,9 @@ technique SCGI techniqueGIDesc {
 		STDVS;
 		PSBind(blend);
 	}
-	pass SaveGBuffers {
+	/*pass SaveGBuffers {
 		STDVS;
 		PSBind(saveGbuffers);
 		RT(tPrevG);
-	}
+	}*/
 }
