@@ -79,45 +79,10 @@ sampler sDNGIs { Texture = tDNGIs; };
 
 // SVGF stuff
 void computeVariance(pData, out float variance : SV_Target0) {
-	uint accumL = tex2D(sExpRejMask, uv).x;
-	float luma = lin2ok(tex2D(sTAA, uv).rgb).r;
+	float luma = dot(tex2D(sTAA, uv).rgb, float3(0.2126, 0.7152, 0.0722));
 	float sumSquared = luma * luma;
 	float sumOfSquares = tex2D(sLumaSquaredTAA, uv).r;
-	variance = sumSquared - sumOfSquares;
-	
-	if (accumL <= 4u) {
-		// spatial estimate
-		sumOfSquares = 0.;
-		float savedLuma = luma;
-		luma = 0.;
-	
-		float3 normal = zfw::getNormal(uv);
-		float z = zfw::getDepth(uv);
-		
-		float cum_w = 0.;
-		for (int i = 0; i < 25; i++) {
-			float2 curruv = uv + offset[i] * ReShade::PixelSize;
-			
-			float luma_tmp = lin2ok(tex2Dlod(sGI, float4(curruv, 0., 0.)).rgb).r;
-			float luma_sq_tmp = tex2Dlod(sLumaSquared, float4(curruv, 0., 0.)).r;
-			
-			float3 N_tmp = zfw::getNormal(curruv);
-			float Z_tmp = zfw::getDepth(curruv);
-			
-			float normalW = pow(saturate(dot(normal, N_tmp)), n_phi);
-			
-			
-			float depthW = exp(-abs(z - Z_tmp) / (p_phi * abs(length(offset[i]) * (z - Z_tmp)) + epsilon)); // SVGF eq 3, hopefully correct.
-			
-			
-			float weight = normalW * depthW;
-			sumOfSquares += weight * kernel[i] * luma_sq_tmp;
-			luma += weight * kernel[i] * luma_tmp;
-			cum_w += weight * kernel[i];
-		}
-		
-		variance = luma * luma - sumOfSquares;
-	}
+	variance = sumOfSquares - sumSquared;
 }
 
 
@@ -143,6 +108,8 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 	float accumulation = float(tex2D(sAccum, texcoord).r);
 	float3 mv = zfw::getVelocity(texcoord);
 	
+	float denominator = (col * sqrt(max(0., variance / (accumulation + 1e-6))) + epsilon);
+	
 	float cum_w = 0.0;
 	[unroll]
 	for (int i = 0; i < 25; i++) {
@@ -157,13 +124,10 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 		float lum_tmp = dot(GI_tmp.rgb, float3(0.2126, 0.7152, 0.0722));
 		
 		float normalW = pow(saturate(dot(normal, N_tmp)), n_phi);
-		
-		
 		float depthW = exp(-abs(z - Z_tmp) / (p_phi * abs(length(offset[i]) * (z - Z_tmp)) + epsilon)); // SVGF eq 3, hopefully correct.
+		float lumW = exp(-abs(lum - lum_tmp) / denominator); 
 		
-		float lumW = exp(-abs(lum - lum_tmp) / (col * sqrt(max(0.0001, variance / (accumulation + 1e-6))) + epsilon)); // max has an epsilon. I don't know why it needs one, but w/o it it explodes into NaNs at high smoothness.
-		
-		float weight = mv.z < 0.9 ? (depthW * normalW) : (normalW * depthW * lumW);
+		float weight = accumulation < 4u || mv.z < 0.9 ? (depthW * normalW) : (normalW * depthW * lumW);
 		sum += float4(GI_tmp, AO_tmp) * weight * kernel[i];
 		sum_var += var_tmp * weight * kernel[i];
 		cum_w += weight * kernel[i];

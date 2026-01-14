@@ -64,6 +64,16 @@ technique SCGI techniqueGIDesc {
 		PSBind(preCalcRadiance);
 		RT(tRadiance);
 	}
+	pass IncrementAccumulation {
+		STDVS;
+		PSBind(incrementAccum);
+		RenderTarget0 = tAccum;
+	}
+	pass SwapAccumulation {
+		STDVS;
+		PSBind(swapAccum);
+		RT(tAccumS);
+	}
 	pass Main {
 		STDVS;
 		PSBind(main);
@@ -83,7 +93,6 @@ technique SCGI techniqueGIDesc {
 			RT(tGIdbg);
 		}
 	#endif
-	
 	pass TAA {
 		STDVS;
 		PSBind(TAA);
@@ -100,7 +109,6 @@ technique SCGI techniqueGIDesc {
 		PSBind(denoise0);
 		RenderTarget0 = tDNGI;
 		RenderTarget1 = tVarianceS;
-		//RenderTarget2 = tHistoryDenoised; 
 	}
 	pass Denoise1 {
 		STDVS;
@@ -120,23 +128,8 @@ technique SCGI techniqueGIDesc {
 		RenderTarget0 = tDNGIs;
 		RenderTarget1 = tVariance;
 	}
-	pass IncrementAccumulation {
-		STDVS;
-		PSBind(incrementAccum);
-		RenderTarget0 = tAccum;
-	}
-	pass SwapAccumulation {
-		STDVS;
-		PSBind(swapAccum);
-		RT(tAccumS);
-	}
 	pass Blend {
 		STDVS;
 		PSBind(blend);
 	}
-	/*pass SaveGBuffers {
-		STDVS;
-		PSBind(saveGbuffers);
-		RT(tPrevG);
-	}*/
 }

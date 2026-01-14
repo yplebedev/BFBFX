@@ -86,7 +86,7 @@ void incrementAccum(pData, out uint incremented : SV_Target0) {
 void swapAccum(pData, out uint swapped : SV_Target0) {
 	swapped = tex2D(sAccum, uv);
 	if (tex2D(sExpRejMask, uv).r < 0.8) {
-		swapped = 1u; // if it runs after GI, one frame is always correct*
+		swapped = 0u;
 		return;
 	}
 	swapped = clamp(swapped, 1u, 64u*2u); 
@@ -138,18 +138,14 @@ float3 tex2DoffsetLOD(sampler sam, float2 uv, int2 offset, float LOD) {
 
 void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Target1) {
 	float3 mv = zfw::getVelocity(uv);
+	uint accumLength = tex2D(sAccum, uv);
 	float weight = getLerpWeight(uv);
-	float4 history = tex2Dlod(sGIs, float4(uv + mv.xy, 0., mv.z < 0.8 ? 3.0 : 0.0));
+	float4 history = tex2Dlod(sGIs, float4(uv + mv.xy, 0., accumLength < 4u || mv.z < 0.8 ? 3.0 : 0.0));
 	
 	resolved = lerp(tex2D(sGI, uv), history, weight);
-	sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight); // initial estimate, replaced later
-	
-	float variance = (dot(resolved.rgb, float3(0.2126, 0.7152, 0.0722)) * dot(resolved.rgb, float3(0.2126, 0.7152, 0.0722))) - (sumOfSquares.r);
-	/*float sigma = sqrt(variance);
+	sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight);
 	
 	#ifdef GI_D
-		
-		
 		const int size_r = 2;
 		float3 minimum = 2e16f;
 		float3 maximum = -2e16f;
@@ -163,13 +159,12 @@ void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Ta
 		}
 		
 		if (do_clamp) {
-			const float allowance = 0.01; // ad-hoc allowed deviation
-			history.rgb = clamp(history.rgb, minimum - sigma * allowance, maximum + sigma * allowance);
+			const float allowance = 0.001; // ad-hoc allowed deviation
+			history.rgb = clamp(history.rgb, minimum, maximum);
 		}
 	#endif
 	
 	resolved = lerp(tex2D(sGI, uv), history, weight);
-	sumOfSquares = lerp(tex2D(sLumaSquared, uv).r, tex2D(sLumaSquaredS, uv + mv.xy).r, weight);*/
 }
 
 
