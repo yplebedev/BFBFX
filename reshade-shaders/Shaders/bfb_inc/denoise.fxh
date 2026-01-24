@@ -86,8 +86,8 @@ void computeVariance(pData, out float variance : SV_Target0) {
 }
 
 
-texture tVariance { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 3; };
-sampler sVariance { Texture = tVariance; MinLOD = 0.0f; MaxLOD = 2.0f; };
+texture tVariance { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
+sampler sVariance { Texture = tVariance; };
 
 texture tVarianceS { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
 sampler sVarianceS { Texture = tVarianceS; };
@@ -108,7 +108,7 @@ float4 atrous_advanced(sampler gi, sampler sVar, float2 texcoord, float level, i
 	float accumulation = float(tex2D(sAccum, texcoord).r);
 	float3 mv = zfw::getVelocity(texcoord);
 	
-	float denominator = (col * sqrt(max(0., variance / (accumulation + 1e-6))) + epsilon);
+	float denominator = (col * sqrt(max(1e-6, variance / (accumulation + 1e-6))) + epsilon);
 	
 	float cum_w = 0.0;
 	[unroll]
