@@ -12,7 +12,7 @@
 	uniform float protect <ui_type = "slider"; ui_label = "Shadow protection"; ui_tooltip = "Trade correctness for more reliably saturated results."; ui_min = 0.; ui_max = 1.0;> = 0.5;
 	uniform bool do_clamp <ui_label = "Deghost"; ui_tooltip = "Experimental super expensive TAA-style deghosting";> = true;
 	uniform float col <ui_label = "Filter Smoothness"; ui_type = "slider"; ui_min = 0.001; ui_max = 10.0;> = 3.0;
-	uniform float fuck_you_ukn <ui_type = "slider"; ui_label = "AO Strength"; ui_min = 0.0; ui_max = 5.0;> = 1.0;
+	uniform float ao_strength <ui_type = "slider"; ui_label = "AO Strength"; ui_min = 0.0; ui_max = 5.0;> = 1.0;
 #endif
 
 

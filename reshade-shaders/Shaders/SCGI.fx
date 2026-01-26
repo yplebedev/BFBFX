@@ -37,7 +37,7 @@ fastPS(blend) {
 	float error = tex2D(sVariance, uv).x;
 	
 	float3 albedo = lerp(zfw::getAlbedo(uv), pow(BackBuf, 2.2), protect);
-	return float4(zfw::toneMap(debug ? light.rgb + light.a * 0.01 : light.rgb * albedo * strength + HDR * pow(light.a, fuck_you_ukn), tonemapWhite), 1.0);
+	return float4(zfw::toneMap(debug ? light.rgb + light.a * 0.01 : light.rgb * albedo * strength + HDR * pow(light.a, ao_strength), tonemapWhite), 1.0);
 }
 
 // note to UKN:
@@ -48,6 +48,12 @@ fastPS(blend) {
 
 	fastPS(extraHighQuality) {
 		return calcGI(uv, vpos.xy, 1, 12);
+	}
+
+	texture tTestDBG { Width = 240; Height = 150; Format = RGBA8; };
+
+	fastPS(writeTest) {
+		return uv.xyxy;
 	}
 #endif
 
@@ -91,6 +97,11 @@ technique SCGI techniqueGIDesc {
 			STDVS;
 			PSBind(extraHighQuality);
 			RT(tGIdbg);
+		}
+		pass WriteTest {
+			STDVS;
+			PSBind(writeTest);
+			RT(tTestDBG);
 		}
 	#endif
 	pass TAA {
