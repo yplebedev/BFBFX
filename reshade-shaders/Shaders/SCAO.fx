@@ -39,16 +39,6 @@ technique SCAO techniqueDesc {
 		PSBind(expand);
 		RT(tExpRejMask);
 	}
-	pass Main {
-		STDVS;
-		PSBind(main);
-		RT(tAO);
-	}
-	pass SwapAO {
-		STDVS;
-		PSBind(swapAO);
-		RT(tAOs);
-	}
 	pass IncrementAccumulation {
 		STDVS;
 		PSBind(incrementAccum);
@@ -58,6 +48,16 @@ technique SCAO techniqueDesc {
 		STDVS;
 		PSBind(swapAccum);
 		RT(tAccumS);
+	}
+	pass Main {
+		STDVS;
+		PSBind(main);
+		RT(tAO);
+	}
+	pass SwapAO {
+		STDVS;
+		PSBind(swapAO);
+		RT(tAOs);
 	}
 	pass Denoise {
 		STDVS;

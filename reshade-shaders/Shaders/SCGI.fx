@@ -86,12 +86,6 @@ technique SCGI techniqueGIDesc {
 		RenderTarget0 = tGI;
 		RenderTarget1 = tLumaSquared;
 	}
-	pass swapGI {
-		STDVS;
-		PSBind(swapGI);
-		RenderTarget0 = tGIs;
-		RenderTarget1 = tLumaSquaredS;
-	}
 	#ifdef DEBUG_ADDON
 		pass UltraHigh {
 			STDVS;
@@ -104,16 +98,8 @@ technique SCGI techniqueGIDesc {
 			RT(tTestDBG);
 		}
 	#endif
-	pass TAA {
-		STDVS;
-		PSBind(TAA);
-		RenderTarget0 = tTAA;
-		RenderTarget1 = tLumaSquaredTAA;
-	}
-	pass ComputeVariance {
-		STDVS;
-		PSBind(computeVariance);
-		RT(tVariance);
+	pass ConstructMoments {
+		
 	}
 	pass Denoise0 {
 		STDVS;

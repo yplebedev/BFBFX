@@ -20,14 +20,8 @@ sampler sGI { Texture = tGI; MinLOD = 0.0f; };
 texture tGIs { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };
 sampler sGIs { Texture = tGIs; MaxLOD = 3.0f; };
 
-texture tTAA { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 6; };
-sampler sTAA { Texture = tTAA; MinLOD = 0.0f; MaxLOD = 5.0f; };
-
 
 // svgf
-texture tLumaSquaredTAA { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; };
-sampler sLumaSquaredTAA { Texture = tLumaSquaredTAA; };
-
 texture tLumaSquared { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 6; };
 sampler sLumaSquared { Texture = tLumaSquared; MinLOD = 0.0f; MaxLOD = 5.0f; };
 
@@ -131,12 +125,11 @@ fastPS(expand) {
 	return minW;
 }
 
-float3 tex2DoffsetLOD(sampler sam, float2 uv, int2 offset, float LOD) {
-	float2 offsetUV = ReShade::PixelSize * ((float2)offset);
-	return tex2Dlod(sam, float4(uv + offsetUV, 0., LOD)).rgb;
+void swap(pData, out float4 GI, out float luma_squared) {
+	
 }
 
-void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Target1) {
+void accumulate(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Target1) {
 	float3 mv = zfw::getVelocity(uv);
 	uint accumLength = tex2D(sAccum, uv);
 	float weight = getLerpWeight(uv);
@@ -152,7 +145,7 @@ void TAA(pData, out float4 resolved : SV_Target0, out float sumOfSquares : SV_Ta
 		
 		for(int dx = -size_r; dx <= size_r; dx++) {
 			for(int dy = -size_r; dy <= size_r; dy++) {
-				float3 value = tex2DoffsetLOD(sGI, uv, int2(dx, dy) * 2, 1.0).rgb;
+				float3 value = tex2Doffset(sGI, uv, int2(dx, dy)).rgb;
 				minimum = min(value, minimum);
 				maximum = max(value, maximum);
 			}

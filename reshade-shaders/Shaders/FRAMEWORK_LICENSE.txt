@@ -1,0 +1,2 @@
+This is written documentation verifying that I, Daniel Oren-Ibarra, give permission for the inclusion, distribution, and modification of Zenteon: Framework, as well as the associated common files and/or textures, in the BFBFX repository, by yplebedev.
+This does not constitute a licensing change for any other than the aforementioned individual(s).
