@@ -1,1 +1,0 @@
-#define GI_D
