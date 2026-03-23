@@ -7,6 +7,7 @@
 #include "ZenteonCommon.fxh"
 
 uniform int MOT_QUALITY <
+	hidden = true;
 	ui_type = "combo";
 	ui_label = "Motion Quality";
 	ui_items = "Low\0Medium\0High\0";
@@ -15,6 +16,7 @@ uniform int MOT_QUALITY <
 
 uniform bool DEBUG <
 	ui_label = "Debug Flow";
+	hidden = true;
 > = 0;
 
 

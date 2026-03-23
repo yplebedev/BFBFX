@@ -41,7 +41,7 @@ static const float GAUSS_7[49] = {
     0/1003f  , 0/1003f  , 1/1003f  , 2/1003f  , 1/1003f  , 0/1003f  , 0/1003f  ,
 };
 
-uniform float FOV<hidden = false;> = HALF_PI; // radians, vfov!!!
+uniform float FOV<hidden = true;> = HALF_PI; // radians, vfov!!!
 
 uniform float PEAK_LUMINANCE<hidden=true;> = 1000.0/10000.0; // https://en.wikipedia.org/wiki/Perceptual_quantizer                                                                                                                                                      |__/             
 
