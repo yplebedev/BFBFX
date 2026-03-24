@@ -320,7 +320,7 @@ float3 BackBuf_to_rec709(float3 BackBufferColor) {
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		return 0.rrr; // Fake
+		return BackBufferColor; // Fake
 	#endif
 }
 
@@ -357,7 +357,7 @@ float3 rec709_to_BackBuf(float3 ToDisplay) {
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		return 0.rrr; // Literally not real
+		return BackBufferColor; // Literally not real
 	#endif
 }
 

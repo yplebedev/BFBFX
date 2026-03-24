@@ -1,4 +1,5 @@
 #include "OpenRSF.fxh"
+#include "filtering.fxh"
 
 uniform int framecount < source = "framecount"; >;
 static const uint bitmask_size = 32u;
@@ -30,8 +31,8 @@ void set_own_projection_data(in float3 tangent, in float3 projected_tangent, in 
 	projection_angle_change = sign * acos(cos_angle_change); // OUT
 }
 
-void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 AO : SV_Target0) {
-	AO = 0.;
+void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
+	float AO = 0.;
 	
 	float depth = getDepth(uv);
 	float3 view_pos = getViewPos(uv, depth); view_pos *= 0.99;
@@ -88,8 +89,20 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 AO : SV_Ta
 	
 	AO /= samples * float(bitmask_size);
 	AO = 1.0 - AO;
+	
+	output = lerp(tex2D(sAOhistory, uv + getMotion(uv).xy).r, AO, rcp(1. + tex2D(sAccumLength, uv).r));
+}
+
+void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
+	output = float4(tex2D(sAO, uv).rrr, 1.0);
 }
 
 technique SSAO<ui_label = "BFBFX: SSAO";> {
-	pass Main { PixelShader = main; VertexShader = PostProcessVS; }
+	pass Reset { PixelShader = reset; VertexShader = PostProcessVS; RenderTarget = tAccumLength; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN;  }
+	pass Main { PixelShader = main; VertexShader = PostProcessVS; RenderTarget = tAO; }
+	pass Increment { PixelShader = increment; VertexShader = PostProcessVS; BlendEnable = true; BlendOp = ADD; SrcBlend = ONE; DestBlend = ONE; RenderTarget = tAccumLength; }
+	pass Clamp { PixelShader = clamp; VertexShader = PostProcessVS; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN; RenderTarget = tAccumLength; }
+	
+	pass Blend { PixelShader = blend; VertexShader = PostProcessVS; }
+	pass TemporalLoop { PixelShader = copy_ao; VertexShader = PostProcessVS; RenderTarget = tAOhistory; }
 }
