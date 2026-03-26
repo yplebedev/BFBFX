@@ -31,15 +31,14 @@ void set_own_projection_data(in float3 tangent, in float3 projected_tangent, in 
 	projection_angle_change = sign * acos(cos_angle_change); // OUT
 }
 
-void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
-	float AO = 0.;
-	
+void compute_ao(inout float AO, float4 vpos, float2 uv) {
 	float depth = getDepth(uv);
 	float3 view_pos = getViewPos(uv, depth); view_pos *= 0.99;
 	float3 view_vec = -normalize(view_pos);
 	
 	float3 view_normal = getNormal(uv);
-	float direction = hash23(vpos.xy, framecount * 3.).x * TWO_PI;
+	float2 random = hash23(vpos.xy, framecount * 3.);
+	float direction = random.x * TWO_PI;
 	
 	for (uint i_direction = 0; i_direction < samples; i_direction++) {
 		float alpha = float(i_direction) / float(samples) + direction;
@@ -55,7 +54,9 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV
 		uint bitmask = 0u;
 		for (float direction = 1.0; direction >= -1.0; direction -= 2.0) {
 			for (uint step = 1u; step <= steps; step++) {
-				float2 step_pixel_loc = vpos.xy + direction_vector * lerp(1.0, radius, float(step) / float(steps)) * direction / length(view_pos);
+				float2 step_pixel_loc = vpos.xy + direction_vector * 
+						lerp(1.0, radius, (float(step) + random.y - 0.5) / float(steps)) * direction / length(view_pos);
+						
 				step_pixel_loc = floor(step_pixel_loc) + 0.5;
 				float2 step_uv = step_pixel_loc / BUFFER_SCREEN_SIZE;
 				
@@ -71,6 +72,7 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV
 				float2 front_back_angles = acos(float2(
 					dot(delta_front, view_vec), dot(delta_back, view_vec)
 				));
+				
 				float2 extent = saturate(((direction * -front_back_angles) - projection_angle_change + HALF_PI) / PI);
 				extent = saturate(extent);
 				extent = sort_asc(extent);
@@ -90,6 +92,12 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV
 	
 	AO /= samples * float(bitmask_size);
 	AO = 1.0 - AO;
+}
+
+void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
+	float AO = 0.;
+	
+	compute_ao(AO, vpos, uv);
 	
 	float3 motion = getMotion(uv);
 	output = lerp(tex2D(sAOhistory, uv + motion.xy).r, AO, rcp(1. + tex2D(sAccumLength, uv).r));
