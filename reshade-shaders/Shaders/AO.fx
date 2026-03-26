@@ -59,9 +59,10 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV
 				step_pixel_loc = floor(step_pixel_loc) + 0.5;
 				float2 step_uv = step_pixel_loc / BUFFER_SCREEN_SIZE;
 				
-				if (any(abs(step_uv - 0.5.xx) > 0.5)) break;
-				
+				if (!onscreen(step_uv)) break;
 				float step_depth = getDepth(step_uv);
+				if (step_depth > 0.99) break; // fix for weirdness around the sky
+				
 				float3 front = getViewPos(step_uv, step_depth);
 				float3 delta_front = normalize(front - view_pos);
 				float3 delta_back = normalize(front - view_pos - thickness * view_vec);
@@ -90,7 +91,8 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV
 	AO /= samples * float(bitmask_size);
 	AO = 1.0 - AO;
 	
-	output = lerp(tex2D(sAOhistory, uv + getMotion(uv).xy).r, AO, rcp(1. + tex2D(sAccumLength, uv).r));
+	float3 motion = getMotion(uv);
+	output = lerp(tex2D(sAOhistory, uv + motion.xy).r, AO, rcp(1. + tex2D(sAccumLength, uv).r));
 }
 
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
