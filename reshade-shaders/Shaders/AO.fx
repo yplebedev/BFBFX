@@ -104,7 +104,7 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV
 }
 
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
-	output = float4(tex2D(sAO, uv).rrr, 1.0);
+	output = float4(tex2D(sDenoised0, uv).rrr, 1.0);
 }
 
 technique SSAO<ui_label = "BFBFX: SSAO";> {
@@ -112,6 +112,12 @@ technique SSAO<ui_label = "BFBFX: SSAO";> {
 	pass Main { PixelShader = main; VertexShader = PostProcessVS; RenderTarget = tAO; }
 	pass Increment { PixelShader = increment; VertexShader = PostProcessVS; BlendEnable = true; BlendOp = ADD; SrcBlend = ONE; DestBlend = ONE; RenderTarget = tAccumLength; }
 	pass Clamp { PixelShader = clamp; VertexShader = PostProcessVS; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN; RenderTarget = tAccumLength; }
+	
+	pass Denoise { PixelShader = denoise_0; VertexShader = PostProcessVS; RenderTarget = tDenoised0; }
+	pass Denoise { PixelShader = denoise_1; VertexShader = PostProcessVS; RenderTarget = tDenoised1; }
+	pass Denoise { PixelShader = denoise_2; VertexShader = PostProcessVS; RenderTarget = tDenoised0; }
+	pass Denoise { PixelShader = denoise_1; VertexShader = PostProcessVS; RenderTarget = tDenoised1; }
+	pass Denoise { PixelShader = denoise_0; VertexShader = PostProcessVS; RenderTarget = tDenoised0; }
 	
 	pass Blend { PixelShader = blend; VertexShader = PostProcessVS; }
 	pass TemporalLoop { PixelShader = copy_ao; VertexShader = PostProcessVS; RenderTarget = tAOhistory; }

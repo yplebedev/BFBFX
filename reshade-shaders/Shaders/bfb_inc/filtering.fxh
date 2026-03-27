@@ -16,6 +16,12 @@ sampler sAOhistory { Texture = tAOhistory; ADDRESS; };
 texture tAccumLength { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R32F; };
 sampler sAccumLength { POINT_SAMPLE; Texture = tAccumLength; };
 
+texture tDenoised0 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=R16; };
+sampler sDenoised0 { Texture = tDenoised0; };
+
+texture tDenoised1 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=R16; };
+sampler sDenoised1 { Texture = tDenoised1; };
+
 void increment(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float by : SV_Target0) {
 	by = 1.;
 }
@@ -47,10 +53,66 @@ void reset(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float accumulati
 }
 
 void clamp(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float max : SV_Target0) {
-	max = 128.0;
+	max = 32.0;
 }
 
 
 void copy_ao(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
 	output = tex2D(sAO, uv).r;
+}
+
+#define loop_3x3(callback)\
+for (int dx = -1; dx <= 1; dx++) {\
+for (int dy = -1; dy <= 1; dy++) {\
+	callback;\
+}\
+}\
+
+uint get_slice(int dx, int dy) {
+	return (dx + 1) + 3*(dy + 1);
+}
+
+float3 getNormalOffset(float2 uv, int2 offset) {
+	return normalize(UVtoOCT(tex2Doffset(ORSFShared::sTexN, uv, offset).xy));
+}
+
+float normal_similarity(float3 center, float3 checked) {
+	const float sigma = 2.;
+	return pow(max(dot(center, checked), 0.), sigma);
+}
+
+float color_similarity(float center, float checked) {
+	const float sigma = 4.;
+	const float eps = .1;
+	return exp(-abs(center - checked) / (sigma + eps));
+}
+
+float denoise(sampler source, float2 uv, uint scale) {
+	float accum = 0.;
+	float weights[9];
+	float cumulation = 0.;
+	
+	float3 center_normal = getNormal(uv);
+	float center_value = tex2Dlod(source, float4(uv, 0., 0.)).r;
+	
+	loop_3x3(weights[get_slice(dx, dy)] = GAUSS_3[get_slice(dx, dy)];
+				 weights[get_slice(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy) * scale)) )
+	loop_3x3(float val = tex2Doffset(source, uv, int2(dx, dy) * scale).x;
+			 weights[get_slice(dx, dy)] *= color_similarity(val, center_value);
+			 accum += val * weights[get_slice(dx, dy)];
+			 cumulation += weights[get_slice(dx, dy)] )
+	
+	return accum / cumulation;
+}
+
+void denoise_0(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float denoised : SV_Target0) {
+	denoised = denoise(sAO, uv, 1);
+}
+
+void denoise_1(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float denoised : SV_Target0) {
+	denoised = denoise(sAO, uv, 1 << 1);
+}
+
+void denoise_2(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float denoised : SV_Target0) {
+	denoised = denoise(sAO, uv, 1 << 2);
 }
