@@ -320,6 +320,7 @@ float3 BackBuf_to_rec709(float3 BackBufferColor) {
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
+		#warning HDR10 HLG not supported! Please change the configuration of the game.
 		return BackBufferColor; // Fake
 	#endif
 }
@@ -357,7 +358,8 @@ float3 rec709_to_BackBuf(float3 ToDisplay) {
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		return BackBufferColor; // Literally not real
+		#warning HDR10 HLG not supported! Please change the configuration of the game.
+		return ToDisplay; // Literally not real
 	#endif
 }
 
@@ -432,9 +434,9 @@ float3 ok_to_oklch(float3 ok) {
 
 float3 rec709_to_xyz(float3 rec) {
 	float3x3 toXYZ = float3x3(
-		float3(0.4124564, 0.3575761, 0.1804375),
-		float3(0.2126729, 0.7151522, 0.0721750),
-		float3(0.0193339, 0.1191920, 0.9503041)
+		float3(0.4338873456,  0.3762240091,  0.1898886453),
+		float3(0.2126390059,  0.7151686788,  0.0721923154),
+		float3(0.0177500401,  0.1094476209,  0.8728023391)
 	);
 	
 	return mul(toXYZ, rec);
@@ -442,9 +444,9 @@ float3 rec709_to_xyz(float3 rec) {
 
 float3 xyz_to_rec709(float3 xyz) {
 	float3x3 rec = float3x3(
-		float3( 3.24045,   -1.53714, -0.498532),
-		float3(-0.969266,   1.87601,  0.0415561),
-		float3( 0.0556434, -0.204026, 1.05723)
+		float3(3.0803990907, -1.5373831776, -0.5430159131),
+		float3(-0.9212233589,  1.8759675015,  0.0452558574),
+		float3(0.0528739390, -0.2039769589,  1.1511030199)
 	);
 	
 	return mul(rec, xyz);
@@ -455,9 +457,9 @@ float3 xyz_to_rec709(float3 xyz) {
 
 float3 xyz_to_aces2065(float3 xyz) {
 	float3x3 toACES2065_1 = float3x3(
-		float3( 1.06349549153674,  0.006408910197529,-0.015806786587775),
-		float3(-0.492074128004177, 1.368223407498281, 0.091337088325457),
-		float3(-0.002816461639118, 0.004644171056578, 0.916418574549673)
+		float3(1.0105283620,  0.0051800005, -0.0157083625),
+		float3(-0.4673022484,  1.3693796728,  0.0979225756),
+		float3(0.0003795563, -0.0011375197,  1.0007579634)
 	);
 	
 	return mul(toACES2065_1, xyz);
@@ -465,9 +467,9 @@ float3 xyz_to_aces2065(float3 xyz) {
 
 float3 aces2065_to_cg(float3 ACES2065_1) {
 	float3x3 toACEScg = float3x3(
-		float3( 1.4514393161, -0.2365107469, -0.2149285693),
-		float3(-0.0765537734,  1.1762296998, -0.0996759264),
-		float3( 0.0083161484, -0.0060324498,  0.9977163014)
+		float3(1.4514393161, -0.2365107469, -0.2149285693),
+		float3(-0.0765537733,  1.1762296998, -0.0996759265),
+		float3(0.0083161484, -0.0060324498,  0.9977163014)
 	);
 	
 	return mul(toACEScg, ACES2065_1);
@@ -475,9 +477,9 @@ float3 aces2065_to_cg(float3 ACES2065_1) {
 
 float3 cg_to_aces2065(float3 cg) {
 	float3x3 to2065 = float3x3(
-		float3( 0.6954522414, 0.1406786965, 0.1638690622),
-		float3( 0.0447945634, 0.8596711185, 0.0955343182),
-		float3(-0.0055258826, 0.0040252103, 1.0015006723)
+		float3(0.6954522414,  0.1406786965,  0.1638690622),
+		float3(0.0447945634,  0.8596711184,  0.0955343182),
+		float3(-0.0055258826,  0.0040252103,  1.0015006723)
 	);
 	
 	return mul(to2065, cg);
@@ -485,15 +487,13 @@ float3 cg_to_aces2065(float3 cg) {
 
 float3 aces2065_to_xyz(float3 ACES2065_1) {
 	float3x3 toxyz = float3x3(
-		float3( 0.938279849239345, -0.00445144581227847, 0.0166275235564231),
-		float3( 0.337368890823117, 0.729521566676754, -0.066890457499083),
-		float3( 0.00117395084939056, -0.00371070640198378, 1.09159450636463)
+		float3(0.9878534487, -0.0037236048,  0.0158701560),
+		float3(0.3371054160,  0.7289276303, -0.0660330462),
+		float3(0.0000085116,  0.0008299538,  0.9991615346)
 	);
 	
 	return mul(toxyz, ACES2065_1);
 }
-
-
 
 
 float3 xyz_to_cg(float3 xyz) {
@@ -504,32 +504,30 @@ float3 cg_to_xyz(float3 cg) {
 	return aces2065_to_xyz(cg_to_aces2065(cg));
 }
 
-// tonemapping...
-static const float eps = 2e-6;
-float3 getReinhardHDR(float3 SDR, float whitepoint, float saturation = 1.0) {
-	float luma = rec709_to_ok(SDR).r * 0.5;
-    float3 delta = SDR - float3(luma, luma, luma);
-    float luma_tonemapped = max(-luma / (luma - 1 - rcp(whitepoint)), eps);
-    return lerp(luma_tonemapped + delta, max(-SDR / (SDR - 1 - rcp(whitepoint)), eps), saturation); // good when not tonemapping with rein
+
+#ifndef WHITEPOINT
+	#define WHITEPOINT 15.0
+#endif
+
+// https://github.com/Zenteon/FrameworkDocs/blob/7960864098f664967b87d8da4e4db3948cb5968f/Headers/FrameworkResources.fxh#L193
+// p much, this works really well, and mine had a lot of edge case issues for uses outside of bloom.
+// see ujelfx repo for the old stuff (warning; old code)
+static const float TONEMAP_EPS = 0.0001;
+
+float3 inverseTonemap(float3 c) {
+	float HDR_RED = 1.0 + rcp(WHITEPOINT);
+	float l = dot(c, float3(0.2126, 0.7152,0.0722));
+	c /= l + TONEMAP_EPS;
+	return c * HDR_RED * l / (l + 1.0);
 }
 
-float3 getReinhardSDR(float3 HDR, float whitepoint, float saturation = 1.0) {
-	float luma = rec709_to_ok(HDR).r * 0.5;
-	float3 delta = HDR - luma.rrr;
-	float luma_tonemapped = (luma * (1.0 + luma / (whitepoint * whitepoint))) / (1.0 + luma);
+float3 tonemap(float3 c) {
+	float HDR_RED = 1.0 + rcp(WHITEPOINT);
+	float l = dot(c, float3(0.2126, 0.7152,0.0722));
+	c /= l + TONEMAP_EPS;
 	
-	float3 tonemapped = (HDR * (1.0 + HDR / (whitepoint * whitepoint))) / (1.0 + HDR);
-
-	return lerp(luma_tonemapped.rrr, tonemapped, saturate(saturation));
-}
-
-float3 max3(float x, float y, float z) { return max(x, max(y, z)); }
-float3 getLottesHDR(float3 SDR, float whitepoint) {
-	return SDR * (rcp(max(1.0 - max3(SDR.r, SDR.g, SDR.b) * whitepoint, eps)));
-}
-
-float3 getLottesSDR(float3 HDR, float whitepoint) {
-	return HDR * rcp(max3(HDR.r, HDR.g, HDR.b) * whitepoint + 1.0);
+	const float floor_val = 0.0000001;
+	return max(c * -l / (l - HDR_RED), floor_val);
 }
 
 #ifndef slope
@@ -598,3 +596,6 @@ float3 getACESSDR(float3 rgb) {
 }
 
 #undef RES
+#undef hue_preservation
+#undef sat_preservation
+#undef shoulder

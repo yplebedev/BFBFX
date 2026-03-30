@@ -4,6 +4,9 @@
 
 static const uint bitmask_size = 32u;
 
+uniform bool debug<ui_label = "Debug";> = false;
+uniform float strength<ui_label = "Strength"; ui_type = "slider"; ui_min = 0.0; ui_max = 2.0;> = 1.0;
+
 // Note; these *can* be uniforms. However, its easier to fuck these up in the GUI
 // compared to finding good values. I know you'll poke these if you *really* want to.
 static const float thickness = 4.0;
@@ -56,10 +59,12 @@ void compute_ao(inout float AO, float4 vpos, float2 uv) {
 						lerp(1.0, radius, remap((float(step) + random.y - 0.5) / float(steps))) * direction / length(view_pos);
 						
 				step_pixel_loc = floor(step_pixel_loc) + 0.5;
+				//float lod = distance(step_pixel_loc, vpos.xy) * 0.5 - 2.0;
+				
 				float2 step_uv = step_pixel_loc / BUFFER_SCREEN_SIZE;
 				
 				if (!onscreen(step_uv)) break;
-				float step_depth = getDepth(step_uv);
+				float step_depth = tex2Dfetch(ORSFShared::sDepth, step_pixel_loc).x;
 				if (step_depth > 0.99) break; // fix for weirdness around the sky
 				
 				float3 front = getViewPos(step_uv, step_depth);
@@ -92,7 +97,7 @@ void compute_ao(inout float AO, float4 vpos, float2 uv) {
 	AO = 1.0 - AO;
 }
 
-void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
+void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 output : SV_Target0) {
 	float AO = 0.;
 	
 	compute_ao(AO, vpos, uv);
@@ -102,7 +107,22 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV
 }
 
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
-	output = float4(tex2D(sDenoised0, uv).rrr, 1.0);
+	float AO = tex2D(sDenoised0, uv).r;
+		
+	if (debug) {
+		output = AO.rrr;
+	} else {
+		output = 
+		rec709_to_BackBuf(
+			tonemap(
+				inverseTonemap(
+					BackBuf_to_rec709(
+						tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb
+					)
+				) * pow(AO, strength)
+			)
+		);
+	}
 }
 
 technique SSAO<ui_label = "BFBFX: SSAO";> {
