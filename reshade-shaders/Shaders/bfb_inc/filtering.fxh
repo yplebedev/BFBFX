@@ -7,7 +7,7 @@ AddressU = MODE;\
 AddressV = MODE;\
 AddressW = MODE
 
-texture tAO { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=R16; };
+texture tAO { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=R16; MipLevels = 4; };
 sampler sAO { Texture = tAO; };
 
 texture tAOhistory { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=R16; };
@@ -98,6 +98,10 @@ float color_similarity(float center, float checked) {
 	return exp(-abs(center - checked) / (sigma + eps));
 }
 
+float tex2DoffsetLOD(sampler source, float2 uv, int2 offset, float LOD) {
+	return tex2Dlod(source, float4(uv + offset * ReShade::PixelSize, 0., LOD)).x;
+}
+
 float denoise(sampler source, float2 uv, uint scale) {
 	float accum = 0.;
 	float weights[9];
@@ -108,7 +112,7 @@ float denoise(sampler source, float2 uv, uint scale) {
 	
 	loop_3x3(weights[get_slice(dx, dy)] = GAUSS_3[get_slice(dx, dy)];
 				 weights[get_slice(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy) * scale)) )
-	loop_3x3(float val = tex2Doffset(source, uv, int2(dx, dy) * scale).x;
+	loop_3x3(float val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, (3. - tex2D(sAccumLength, uv).x)).x;;
 			 weights[get_slice(dx, dy)] *= color_similarity(val, center_value);
 			 accum += val * weights[get_slice(dx, dy)];
 			 cumulation += weights[get_slice(dx, dy)] )
@@ -126,7 +130,7 @@ float denoise_wide(sampler source, float2 uv) {
 	
 	loop_7x7(weights[get_slice_wide(dx, dy)] = GAUSS_7[get_slice_wide(dx, dy)];
 				 weights[get_slice_wide(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy))) )
-	loop_7x7(float val = tex2Doffset(source, uv, int2(dx, dy)).x;
+	loop_7x7(float val = tex2DoffsetLOD(source, uv, int2(dx, dy), (3. - tex2D(sAccumLength, uv).x)).x;
 			 accum += val * weights[get_slice_wide(dx, dy)];
 			 cumulation += weights[get_slice_wide(dx, dy)] )
 	
