@@ -52,7 +52,7 @@ void reset(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float accumulati
 	accumulation = ((disocclusion > 0.8) && onscreen(uv + motion.xy)) ? 100000. : 0.;
 }
 
-void clamp(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float max : SV_Target0) {
+void clamp_accum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float max : SV_Target0) {
 	max = 32.0;
 }
 
@@ -74,6 +74,17 @@ for (int dy = -3; dy <= 3; dy++) {\
 	callback;\
 }\
 }\
+
+float2 minmax_search(sampler source, float2 uv) {
+	float v_min = 1.;
+	float v_max = 0.;
+	loop_3x3(
+		float fetch = tex2Doffset(source, uv, int2(dx, dy)).x;
+		v_min = min(fetch, v_min);
+		v_max = max(fetch, v_max);
+	)
+	return float2(v_min, v_max);
+}
 
 uint get_slice(int dx, int dy) {
 	return (dx + 1) + 3*(dy + 1);

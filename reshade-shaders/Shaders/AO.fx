@@ -59,7 +59,6 @@ void compute_ao(inout float AO, float4 vpos, float2 uv) {
 						lerp(1.0, radius, remap((float(step) + random.y - 0.5) / float(steps))) * direction / length(view_pos);
 						
 				step_pixel_loc = floor(step_pixel_loc) + 0.5;
-				//float lod = distance(step_pixel_loc, vpos.xy) * 0.5 - 2.0;
 				
 				float2 step_uv = step_pixel_loc / BUFFER_SCREEN_SIZE;
 				
@@ -98,12 +97,15 @@ void compute_ao(inout float AO, float4 vpos, float2 uv) {
 }
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 output : SV_Target0) {
-	float AO = 0.;
-	
+	float AO = 0.;	
 	compute_ao(AO, vpos, uv);
 	
 	float3 motion = getMotion(uv);
-	output = lerp(tex2D(sAOhistory, uv + motion.xy).r, AO, rcp(1. + tex2D(sAccumLength, uv).r));
+	float2 minmax = minmax_search(sAOhistory, uv + motion.xy);
+	
+	float history = tex2D(sAOhistory, uv + motion.xy).r;
+	history = clamp(history, minmax.x, minmax.y);
+	output = lerp(history, AO, rcp(1. + tex2D(sAccumLength, uv).r));
 }
 
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
@@ -129,7 +131,7 @@ technique SSAO<ui_label = "BFBFX: SSAO";> {
 	pass Reset { PixelShader = reset; VertexShader = PostProcessVS; RenderTarget = tAccumLength; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN;  }
 	pass Main { PixelShader = main; VertexShader = PostProcessVS; RenderTarget = tAO; }
 	pass Increment { PixelShader = increment; VertexShader = PostProcessVS; BlendEnable = true; BlendOp = ADD; SrcBlend = ONE; DestBlend = ONE; RenderTarget = tAccumLength; }
-	pass Clamp { PixelShader = clamp; VertexShader = PostProcessVS; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN; RenderTarget = tAccumLength; }
+	pass Clamp { PixelShader = clamp_accum; VertexShader = PostProcessVS; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN; RenderTarget = tAccumLength; }
 	
 	pass Denoise { PixelShader = denoise_0; VertexShader = PostProcessVS; RenderTarget = tDenoised0; }
 	pass Denoise { PixelShader = denoise_1; VertexShader = PostProcessVS; RenderTarget = tDenoised1; }
