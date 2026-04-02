@@ -320,7 +320,7 @@ float3 BackBuf_to_rec709(float3 BackBufferColor) {
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		#warning HDR10 HLG not supported! Please change the configuration of the game.
+		#warning "HDR10 HLG not supported! Please change the configuration of the game."
 		return BackBufferColor; // Fake
 	#endif
 }
@@ -358,7 +358,7 @@ float3 rec709_to_BackBuf(float3 ToDisplay) {
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		#warning HDR10 HLG not supported! Please change the configuration of the game.
+		#warning "HDR10 HLG not supported! Please change the configuration of the game."
 		return ToDisplay; // Literally not real
 	#endif
 }

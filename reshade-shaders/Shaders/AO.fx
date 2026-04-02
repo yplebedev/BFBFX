@@ -1,34 +1,20 @@
+#define WHITEPOINT 15
 #include "OpenRSF.fxh"
 #include "random.fxh"
 #include "filtering.fxh"
 
-static const uint bitmask_size = 32u;
-
 uniform bool debug<ui_label = "Debug";> = false;
-uniform float strength<ui_label = "Strength"; ui_type = "slider"; ui_min = 0.0; ui_max = 2.0;> = 1.0;
 
 // Note; these *can* be uniforms. However, its easier to fuck these up in the GUI
 // compared to finding good values. I know you'll poke these if you *really* want to.
 static const float thickness = 4.0;
-static const float radius = 1 << 13; // thanks hlsl.
-static const uint samples = 1;
+static const float radius = 1.5; // Fuck it, fulscreen step
+static const uint directions = 1;
 static const uint steps = 4;
+static const float strength<ui_label = "Strength"; ui_type = "slider"; ui_min = 0.0; ui_max = 2.0;> = 1.0; // This looks borked. 
 
-float2 sort_asc(float2 of) {
-	return float2(min(of.x, of.y), max(of.x, of.y));
-}
-
-void set_own_projection_data(in float3 tangent, in float3 projected_tangent, in float3 view_vec, in float3 normal, out float projected_normal_len, out float projection_angle_change) {
-	float3 slice_normal = cross(tangent, view_vec);
-	float3 projected_normal = normal - slice_normal * dot(normal, slice_normal);
-	projected_normal_len = length(projected_normal); // OUT
-	float cos_angle_change = saturate(dot(projected_normal, view_vec) / projected_normal_len);
-	float sign = -sign(dot(projected_normal, projected_tangent));
-	projection_angle_change = sign * acos(cos_angle_change); // OUT
-}
-
-float remap(float t) {
-	return pow(t, 2.5);
+float2 sort(float2 of) {
+	return of.x > of.y ? of.yx : of.xy;
 }
 
 void compute_ao(inout float AO, float4 vpos, float2 uv) {
@@ -40,31 +26,30 @@ void compute_ao(inout float AO, float4 vpos, float2 uv) {
 	float2 random = get_stbn(vpos.xy);
 	float direction = random.x * TWO_PI;
 	
-	for (uint i_direction = 0; i_direction < samples; i_direction++) {
-		float alpha = float(i_direction) / float(samples) + direction;
-		float2 direction_vector = float2(cos(alpha), sin(alpha));
+	for (uint i_direction = 0; i_direction < directions; i_direction++) {
+		float current_direction = float(i_direction) / float(directions) + direction;
+		float2 direction_vector = float2(cos(current_direction), sin(current_direction));
 		
 		float3 tangent = float3(direction_vector, 0.); 
 		float3 projected_tangent = tangent - dot(tangent, view_vec) * view_vec;
 		
-		float projected_normal_len = -1.;
-		float projection_angle_change = -1.;
-		set_own_projection_data(tangent, projected_tangent, view_vec, view_normal, projected_normal_len, projection_angle_change);
+		float3 slice_normal = cross(tangent, view_vec);
+		float3 projected_normal = view_normal - slice_normal * dot(view_normal, slice_normal);
+		float projected_normal_len = length(projected_normal);
+		float cos_n = saturate(dot(projected_normal, view_vec) / projected_normal_len);
+		float sign = -sign(dot(projected_normal, projected_tangent));
+		float n = sign * acos(cos_n);
 		
 		uint bitmask = 0u;
 		[unroll]
 		for (float direction = 1.0; direction >= -1.0; direction -= 2.0) {
-			for (uint step = 1u; step <= steps; step++) {
-				float2 step_pixel_loc = vpos.xy + direction_vector * 
-						lerp(1.0, radius, remap((float(step) + random.y - 0.5) / float(steps))) * direction / length(view_pos);
-						
-				step_pixel_loc = floor(step_pixel_loc) + 0.5;
-				
-				float2 step_uv = step_pixel_loc / BUFFER_SCREEN_SIZE;
+			for (uint step = 0u; step < steps; step++) {
+				float t = (float(step) + random.y - 0.5) / float(steps);
+				float2 step_uv = uv + direction * direction_vector * t * t;
 				
 				if (!onscreen(step_uv)) break;
-				float step_depth = tex2Dfetch(ORSFShared::sDepth, step_pixel_loc).x;
-				if (step_depth > 0.99) break; // fix for weirdness around the sky
+				float step_depth = tex2Dlod(ORSFShared::sDepth, float4(step_uv, 0., 0.)).x;
+				if (step_depth > 0.99) continue;
 				
 				float3 front = getViewPos(step_uv, step_depth);
 				float3 delta_front = normalize(front - view_pos);
@@ -75,24 +60,24 @@ void compute_ao(inout float AO, float4 vpos, float2 uv) {
 					dot(delta_front, view_vec), dot(delta_back, view_vec)
 				));
 				
-				float2 extent = saturate(((direction * -front_back_angles) - projection_angle_change + HALF_PI) / PI);
+				float2 extent = ((direction * -front_back_angles) - n + HALF_PI) / PI;
 				extent = saturate(extent);
-				extent = sort_asc(extent);
+				extent = sort(extent);
 				extent = smoothstep(0., 1., extent);
 				uint2 set_range = uint2(
-					ceil(extent.x * bitmask_size),
-					floor((extent.y - extent.x) * bitmask_size)
+					ceil(extent.x * 32u),
+					floor((extent.y - extent.x) * 32u)
 				);
 				
-				uint step_mask = ((1u << set_range.y) - 1u) << set_range.x;
-				bitmask |= step_mask;
+				uint occluded = ((1u << set_range.y) - 1u) << set_range.x;
+				bitmask |= occluded;
 			}
 		}
 		
 		AO += countbits(bitmask) * projected_normal_len;
 	}
 	
-	AO /= samples * float(bitmask_size);
+	AO /= directions * 32.;
 	AO = 1.0 - AO;
 }
 
@@ -108,22 +93,22 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 output : S
 	output = lerp(history, AO, rcp(1. + tex2D(sAccumLength, uv).r));
 }
 
+float3 display_to_linear(float3 display) {
+	return inverseTonemap(BackBuf_to_rec709(display));
+}
+
+float3 linear_to_display(float3 lin) {
+	return rec709_to_BackBuf(tonemap(lin));
+}
+
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
 	float AO = tex2D(sDenoised0, uv).r;
 		
 	if (debug) {
 		output = AO.rrr;
 	} else {
-		output = 
-		rec709_to_BackBuf(
-			tonemap(
-				inverseTonemap(
-					BackBuf_to_rec709(
-						tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb
-					)
-				) * pow(AO, strength)
-			)
-		);
+		output = tex2Dfetch(ReShade::BackBuffer, vpos.xy); 
+		output.rgb = linear_to_display(display_to_linear(output.rgb) * pow(AO, strength));
 	}
 }
 

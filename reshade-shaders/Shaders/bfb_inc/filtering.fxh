@@ -64,14 +64,14 @@ void copy_ao(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output :
 #define loop_3x3(callback)\
 for (int dx = -1; dx <= 1; dx++) {\
 for (int dy = -1; dy <= 1; dy++) {\
-	callback;\
+	callback\
 }\
 }\
 
 #define loop_7x7(callback)\
 for (int dx = -3; dx <= 3; dx++) {\
 for (int dy = -3; dy <= 3; dy++) {\
-	callback;\
+	callback\
 }\
 }\
 
@@ -122,11 +122,11 @@ float denoise(sampler source, float2 uv, uint scale) {
 	float center_value = tex2Dlod(source, float4(uv, 0., 0.)).r;
 	
 	loop_3x3(weights[get_slice(dx, dy)] = GAUSS_3[get_slice(dx, dy)];
-				 weights[get_slice(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy) * scale)) )
-	loop_3x3(float val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, (3. - tex2D(sAccumLength, uv).x)).x;;
+				 weights[get_slice(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy) * scale)); )
+	loop_3x3(float val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, (3. - tex2D(sAccumLength, uv).x)).x;
 			 weights[get_slice(dx, dy)] *= color_similarity(val, center_value);
 			 accum += val * weights[get_slice(dx, dy)];
-			 cumulation += weights[get_slice(dx, dy)] )
+			 cumulation += weights[get_slice(dx, dy)]; )
 	
 	return accum / cumulation;
 }
@@ -140,10 +140,10 @@ float denoise_wide(sampler source, float2 uv) {
 	float center_value = tex2Dlod(source, float4(uv, 0., 0.)).r;
 	
 	loop_7x7(weights[get_slice_wide(dx, dy)] = GAUSS_7[get_slice_wide(dx, dy)];
-				 weights[get_slice_wide(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy))) )
+				 weights[get_slice_wide(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy))); )
 	loop_7x7(float val = tex2DoffsetLOD(source, uv, int2(dx, dy), (3. - tex2D(sAccumLength, uv).x)).x;
 			 accum += val * weights[get_slice_wide(dx, dy)];
-			 cumulation += weights[get_slice_wide(dx, dy)] )
+			 cumulation += weights[get_slice_wide(dx, dy)]; )
 	
 	return accum / cumulation;
 }
