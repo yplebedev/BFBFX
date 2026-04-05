@@ -61,6 +61,16 @@ void copy_ao(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output :
 	output = tex2D(sAO, uv).r;
 }
 
+texture tGI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sGI { Texture = tGI; MagFilter = POINT; MinFilter = POINT; };
+
+texture tGIhistory { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sGIhistory { Texture = tGIhistory; };
+
+void copy_gi(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
+	output = tex2D(sGI, uv);
+}
+
 #define loop_3x3(callback)\
 for (int dx = -1; dx <= 1; dx++) {\
 for (int dy = -1; dy <= 1; dy++) {\

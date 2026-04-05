@@ -1,3 +1,13 @@
+/**  Special thanks to these people for letting
+*    use their work for HDR support:
+*
+*    MaxG3D / MaxG2D
+*    Pumbo / Filippo Tarpini
+*    EndlesslyFlowering / Lilium
+*    
+*    Creators of the respective standards.
+**/
+
 #pragma once
 #include "ReShade.fxh"
 
@@ -288,82 +298,62 @@ float4 blur7x7_4(sampler input, float2 uv, float scale) {
 	return accum;
 }                                          
 
-float3 BackBuf_to_rec709(float3 BackBufferColor) {
-	#if BUFFER_COLOR_SPACE == 0
-		return BackBufferColor; // Unknown, probably rare enough atp.
-	#endif
-	
-	#if BUFFER_COLOR_SPACE == 1 // sRGB
-		float r = BackBufferColor.r;
-		float g = BackBufferColor.g;
-		float b = BackBufferColor.b;
-		
-		r = (r <= 0.04045 ? r / 12.92 : pow((r + 0.055)/1.055, 2.4));
-		g = (g <= 0.04045 ? g / 12.92 : pow((g + 0.055)/1.055, 2.4));
-		b = (b <= 0.04045 ? b / 12.92 : pow((b + 0.055)/1.055, 2.4));
-		
-		return saturate(float3(r, g, b));
-	#endif
-	
-	#if BUFFER_COLOR_SPACE == 2 // scRGB
-		return BackBufferColor;
-	#endif
-	
-	#if BUFFER_COLOR_SPACE == 2 // HDR10 ST2084
-		float m1 = 0.1593017578125;
-		float m2 = 78.84375;
-		float c2 = 18.8515625;
-		float c3 = 18.6875;
-		float c1 = c3 - c2 + 1.0;
-		
-		return pow((c1 + c2 * pow(PEAK_LUMINANCE, m1)) / (1.0 + c3 * pow(PEAK_LUMINANCE, m1)), m2); // oh god, this will be fun in about six months or so
-	#endif
-	
-	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		#warning "HDR10 HLG not supported! Please change the configuration of the game."
-		return BackBufferColor; // Fake
-	#endif
+
+#if BUFFER_COLOR_SPACE == 0
+	#define C_SRGB
+#elif BUFFER_COLOR_SPACE == 1
+	#define HDR_ON
+	#define C_SCRGB
+#elif BUFFER_COLOR_SPACE == 2
+	#define BT2020_PQ
+	#define HDR_ON
+#else
+	#define C_SRGB
+#endif
+
+// Directly from SimpleHDRShaders:
+static const float sRGB_max_nits = 80.f;
+static const float ReferenceWhiteNits_BT2408 = 203.f;
+static const float sourceHDRWhitepoint = 80.f / sRGB_max_nits;
+static const float HDR10_max_nits = 10000.f;
+static const float mid_gray = 0.18f;
+
+static const float PQ_constant_N = (2610.0 / 4096.0 / 4.0);
+static const float PQ_constant_M = (2523.0 / 4096.0 * 128.0);
+static const float PQ_constant_C1 = (3424.0 / 4096.0);
+static const float PQ_constant_C2 = (2413.0 / 4096.0 * 32.0);
+static const float PQ_constant_C3 = (2392.0 / 4096.0 * 32.0);
+static const float PQMaxWhitePoint = HDR10_max_nits / sRGB_max_nits;
+
+static const float3 BT2020_PrimaryRed = float3(0.6300, 0.3400, 0.0300);
+static const float3 BT2020_PrimaryGreen = float3(0.3300, 0.6000, 0.0800);
+static const float3 BT2020_PrimaryBlue = float3(0.1500, 0.0600, 1.0000);
+static const float3 BT2020_WhitePoint = float3(0.3127, 0.3290, 0.3583);
+
+float3 LinearToPQ(float3 linearCol) {
+	linearCol /= HDR10_max_nits;
+
+	float3 colToPow = pow(linearCol, PQ_constant_N);
+	float3 numerator = PQ_constant_C1 + PQ_constant_C2 * colToPow;
+	float3 denominator = 1.f + PQ_constant_C3 * colToPow;
+	float3 pq = pow(numerator / denominator, PQ_constant_M);
+
+	return pq;
+}
+
+float3 PQToLinear(float3 ST2084) {
+	float3 colToPow = pow(ST2084, 1.0f / PQ_constant_M);
+	float3 numerator = max(colToPow - PQ_constant_C1, 0.f);
+	float3 denominator = PQ_constant_C2 - (PQ_constant_C3 * colToPow);
+	float3 linearColor = pow(numerator / denominator, 1.f / PQ_constant_N);
+
+	linearColor *= HDR10_max_nits;
+
+	return linearColor;
 }
 
 
-float3 rec709_to_BackBuf(float3 ToDisplay) {
-	#if BUFFER_COLOR_SPACE == 0
-		return ToDisplay; // Unknown, probably rare enough atp.
-	#endif
-	
-	#if BUFFER_COLOR_SPACE == 1 // sRGB
-		float r = ToDisplay.r;
-		float g = ToDisplay.g;
-		float b = ToDisplay.b;
-		
-		r = (r <= 0.0031308 ? r * 12.92 : 1.055 * pow(r, 1/2.4) - 0.055);
-		g = (g <= 0.0031308 ? g * 12.92 : 1.055 * pow(g, 1/2.4) - 0.055);
-		b = (b <= 0.0031308 ? b * 12.92 : 1.055 * pow(b, 1/2.4) - 0.055);
-		
-		return saturate(float3(r, g, b));
-	#endif
-	
-	#if BUFFER_COLOR_SPACE == 2 // scRGB
-		return ToDisplay;
-	#endif
-	
-	#if BUFFER_COLOR_SPACE == 2 // HDR10 ST2084
-		float m1 = 0.1593017578125;
-		float m2 = 78.84375;
-		float c2 = 18.8515625;
-		float c3 = 18.6875;
-		float c1 = c3 - c2 + 1.0;
-		
-		return pow(max(pow(ToDisplay, 1.0/m2) - c1, 0.0) / (c2 - c3 * pow(ToDisplay, 1.0/m2)), 1.0/m1); // oh god, this will be fun in about six months or so
-	#endif
-	
-	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		#warning "HDR10 HLG not supported! Please change the configuration of the game."
-		return ToDisplay; // Literally not real
-	#endif
-}
-
-float3 getSRGB(float3 linearSRGB) {
+float3 gamma_srgb(float3 linearSRGB) {
 	float r = linearSRGB.r;
 	float g = linearSRGB.g;
 	float b = linearSRGB.b;
@@ -375,7 +365,7 @@ float3 getSRGB(float3 linearSRGB) {
 	return saturate(float3(r, g, b));
 }
 
-float3 getLSRGB(float3 sRGB) {
+float3 linearize_srgb(float3 sRGB) {
 	float r = sRGB.r;
 	float g = sRGB.g;
 	float b = sRGB.b;
@@ -387,7 +377,35 @@ float3 getLSRGB(float3 sRGB) {
 	return saturate(float3(r, g, b));
 }
 
-// directly from https://bottosson.github.io/posts/oklab/
+float3 BackBuf_to_rec709(float3 bb) {
+	#ifdef C_SRGB
+		return linearize_srgb(bb);
+	#endif
+	
+	#ifdef C_SCRGB
+		return bb;
+	#endif
+	
+	#ifdef BT2020_PQ
+		return PQToLinear(bb);
+	#endif
+}
+
+float3 rec709_to_BackBuf(float3 bb) {
+	#ifdef C_SRGB
+		return gamma_srgb(bb);
+	#endif
+	
+	#ifdef C_SCRGB
+		return bb;
+	#endif
+	
+	#ifdef BT2020_PQ
+		return LinearToPQ(bb);
+	#endif
+}
+
+// Directly from https://bottosson.github.io/posts/oklab/
 #define cbrtf(x) pow(x, 0.33333333)
 
 float3 rec709_to_ok(float3 c) 
@@ -515,19 +533,27 @@ float3 cg_to_xyz(float3 cg) {
 static const float TONEMAP_EPS = 0.0001;
 
 float3 inverseTonemap(float3 c) {
-	float HDR_RED = 1.0 + rcp(WHITEPOINT);
-	float l = dot(c, float3(0.2126, 0.7152,0.0722));
-	c /= l + TONEMAP_EPS;
-	return c * HDR_RED * l / (l + 1.0);
+	#ifdef HDR
+		return c;
+	#else
+		float HDR_RED = 1.0 + rcp(WHITEPOINT);
+		float l = dot(c, float3(0.2126, 0.7152,0.0722));
+		c /= l + TONEMAP_EPS;
+		return c * HDR_RED * l / (l + 1.0);
+	#endif
 }
 
 float3 tonemap(float3 c) {
-	float HDR_RED = 1.0 + rcp(WHITEPOINT);
-	float l = dot(c, float3(0.2126, 0.7152,0.0722));
-	c /= l + TONEMAP_EPS;
-	
-	const float floor_val = 0.0000001;
-	return max(c * -l / (l - HDR_RED), floor_val);
+	#ifdef HDR
+		return c;
+	#else
+		float HDR_RED = 1.0 + rcp(WHITEPOINT);
+		float l = dot(c, float3(0.2126, 0.7152,0.0722));
+		c /= l + TONEMAP_EPS;
+		
+		const float floor_val = 0.0000001;
+		return max(c * -l / (l - HDR_RED), floor_val);
+	#endif
 }
 
 #ifndef slope

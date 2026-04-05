@@ -53,7 +53,7 @@ void copy_smooth(PS_INPUTS, out float2 normals : SV_Target0) {
 	normals = OCTtoUV(tex2Dfetch(sHN1, vpos.xy * 0.5).xyz);
 }
 
-technique ZenWork<ui_label = "BFB: ZenWork";> {
+technique ZenWork<ui_label = "BFBFX: ZenWork";> {
 	// Zenteon: Motion MVs; slower, much higher quality
 	pass {	PASS1(Gauss0PS, tCG0); }
 	pass {	PASS1(Gauss1PS, tCG1); }
