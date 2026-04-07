@@ -112,8 +112,8 @@ void radiance(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 output
 	float3 from_image = display_to_linear(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb);
 	
 	float3 mv = getMotion(uv);
-	float4 gi = tex2D(sGI, uv + mv.xy);
-	float3 from_history = gi.rgb * getAlbedo(uv);
+	float4 gi = tex2D(sDenoised1g, uv + mv.xy);
+	float3 from_history = gi.rgb * mv.z * getAlbedo(uv);
 	
 	output = from_image * gi. a + from_history;
 }

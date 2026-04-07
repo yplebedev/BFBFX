@@ -190,7 +190,7 @@ float normal_similarity(float3 center, float3 checked) {
 }
 
 float color_similarity(float3 center, float3 checked) {
-	const float sigma = 0.002;
+	const float sigma = 0.01;
 	return exp(-distance(center, checked) / (sigma));
 }
 
