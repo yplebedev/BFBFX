@@ -16,11 +16,25 @@ sampler sAOhistory { Texture = tAOhistory; ADDRESS; };
 texture tAccumLength { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R32F; };
 sampler sAccumLength { POINT_SAMPLE; Texture = tAccumLength; };
 
+texture tGI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 4; };
+sampler sGI { Texture = tGI; MagFilter = POINT; MinFilter = POINT; };
+
+texture tGIhistory { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
+sampler sGIhistory { Texture = tGIhistory; };
+
+#ifndef GI_SHADER
 texture tDenoised0 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=R16; };
 sampler sDenoised0 { Texture = tDenoised0; };
 
 texture tDenoised1 { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=R16; };
 sampler sDenoised1 { Texture = tDenoised1; };
+#else
+texture tDenoised0g { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=RGBA16F; };
+sampler sDenoised0g { Texture = tDenoised0g; };
+
+texture tDenoised1g { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format=RGBA16F; };
+sampler sDenoised1g { Texture = tDenoised1g; };
+#endif
 
 void increment(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float by : SV_Target0) {
 	by = 1.;
@@ -60,12 +74,6 @@ void clamp_accum(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float max 
 void copy_ao(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
 	output = tex2D(sAO, uv).r;
 }
-
-texture tGI { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sGI { Texture = tGI; MagFilter = POINT; MinFilter = POINT; };
-
-texture tGIhistory { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; };
-sampler sGIhistory { Texture = tGIhistory; };
 
 void copy_gi(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
 	output = tex2D(sGI, uv);
@@ -108,20 +116,22 @@ float3 getNormalOffset(float2 uv, int2 offset) {
 	return normalize(UVtoOCT(tex2Doffset(ORSFShared::sTexN, uv, offset).xy));
 }
 
+#ifndef GI_SHADER
 float normal_similarity(float3 center, float3 checked) {
-	const float sigma = 2.;
+	const float sigma = 3.;
 	return pow(max(dot(center, checked), 0.), sigma);
 }
 
 float color_similarity(float center, float checked) {
-	const float sigma = 16.;
-	const float eps = .1;
-	return exp(-abs(center - checked) / (sigma + eps));
+	// This will NaN at 0!
+	const float sigma = 0.04;
+	return exp(-distance(center, checked) / (sigma));
 }
 
 float tex2DoffsetLOD(sampler source, float2 uv, int2 offset, float LOD) {
 	return tex2Dlod(source, float4(uv + offset * ReShade::PixelSize, 0., LOD)).x;
 }
+
 
 float denoise(sampler source, float2 uv, uint scale) {
 	float accum = 0.;
@@ -129,7 +139,7 @@ float denoise(sampler source, float2 uv, uint scale) {
 	float cumulation = 0.;
 	
 	float3 center_normal = getNormal(uv);
-	float center_value = tex2Dlod(source, float4(uv, 0., 0.)).r;
+	float center_value = tex2Dlod(source, float4(uv, 0., 0.)).x;
 	
 	loop_3x3(weights[get_slice(dx, dy)] = GAUSS_3[get_slice(dx, dy)];
 				 weights[get_slice(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy) * scale)); )
@@ -147,7 +157,7 @@ float denoise_wide(sampler source, float2 uv) {
 	float cumulation = 0.;
 	
 	float3 center_normal = getNormal(uv);
-	float center_value = tex2Dlod(source, float4(uv, 0., 0.)).r;
+	float center_value = tex2Dlod(source, float4(uv, 0., 0.)).x;
 	
 	loop_7x7(weights[get_slice_wide(dx, dy)] = GAUSS_7[get_slice_wide(dx, dy)];
 				 weights[get_slice_wide(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy))); )
@@ -161,16 +171,81 @@ float denoise_wide(sampler source, float2 uv) {
 void denoise_0(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float denoised : SV_Target0) {
 	if (tex2D(sAccumLength, uv).x < 4.0) {
 		denoised = denoise_wide(sAO, uv);
-		return;
 	} else {
 		denoised = denoise(sAO, uv, 1);
 	}
 }
 
 void denoise_1(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float denoised : SV_Target0) {
-	denoised = denoise(sAO, uv, 2);
+	denoised = denoise(sDenoised0, uv, 2);
 }
 
 void denoise_2(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float denoised : SV_Target0) {
-	denoised = denoise(sAO, uv, 4);
+	denoised = denoise(sDenoised1, uv, 4);
 }
+#else
+float normal_similarity(float3 center, float3 checked) {
+	const float sigma = 3.;
+	return pow(max(dot(center, checked), 0.), sigma);
+}
+
+float color_similarity(float3 center, float3 checked) {
+	const float sigma = 0.002;
+	return exp(-distance(center, checked) / (sigma));
+}
+
+float4 tex2DoffsetLOD(sampler source, float2 uv, int2 offset, float LOD) {
+	return tex2Dlod(source, float4(uv + offset * ReShade::PixelSize, 0., LOD));
+}
+
+float4 denoise(sampler source, float2 uv, uint scale) {
+	float4 accum = 0.;
+	float weights[9];
+	float cumulation = 0.;
+	
+	float3 center_normal = getNormal(uv);
+	const float4 center_value = tex2Dlod(source, float4(uv, 0., 0.));
+	
+	loop_3x3(weights[get_slice(dx, dy)] = GAUSS_3[get_slice(dx, dy)];
+				 weights[get_slice(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy) * scale)); )
+	loop_3x3(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, (3. - tex2D(sAccumLength, uv).x));
+			 weights[get_slice(dx, dy)] *= color_similarity(val.rgb, center_value.rgb);
+			 accum += val * weights[get_slice(dx, dy)];
+			 cumulation += weights[get_slice(dx, dy)]; )
+	
+	return accum / cumulation;
+}
+
+float4 denoise_wide(sampler source, float2 uv) {
+	float4 accum = 0.;
+	float weights[49];
+	float cumulation = 0.;
+	
+	float3 center_normal = getNormal(uv);
+	const float4 center_value = tex2Dlod(source, float4(uv, 0., 0.));
+	
+	loop_7x7(weights[get_slice_wide(dx, dy)] = GAUSS_7[get_slice_wide(dx, dy)];
+				 weights[get_slice_wide(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy))); )
+	loop_7x7(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy), (3. - tex2D(sAccumLength, uv).x));
+			 accum += val * weights[get_slice_wide(dx, dy)];
+			 cumulation += weights[get_slice_wide(dx, dy)]; )
+	
+	return accum / cumulation;
+}
+
+void denoise_0(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0) {
+	if (tex2D(sAccumLength, uv).x < 4.0) {
+		denoised = denoise_wide(sGI, uv);
+	} else {
+		denoised = denoise(sGI, uv, 1);
+	}
+}
+
+void denoise_1(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0) {
+	denoised = denoise(sDenoised0g, uv, 2);
+}
+
+void denoise_2(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0) {
+	denoised = denoise(sDenoised1g, uv, 4);
+}
+#endif

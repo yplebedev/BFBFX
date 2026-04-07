@@ -311,6 +311,26 @@ float4 blur7x7_4(sampler input, float2 uv, float scale) {
 	#define C_SRGB
 #endif
 
+float3 bt_2020_to_rec(float3 c) {
+	const float3x3 to_rec = float3x3(
+		float3(1.6604910021, -0.5876411388, -0.0728498633),
+		float3(-0.1245504745,  1.1328998971, -0.0083494226),
+		float3(-0.0181507634, -0.1005788980,  1.1187296614)
+	);
+	
+	return mul(to_rec, c);
+}
+
+float3 rec_to_bt_2020(float3 c) {
+	const float3x3 to_bt = float3x3(
+		float3(0.6274038959,  0.3292830384,  0.0433130657),
+		float3(0.0690972894,  0.9195403951,  0.0113623156),
+		float3(0.0163914389,  0.0880133079,  0.8955952532)
+	);
+	
+	return mul(to_bt, c);
+}
+
 // Directly from SimpleHDRShaders:
 static const float sRGB_max_nits = 80.f;
 static const float ReferenceWhiteNits_BT2408 = 203.f;
@@ -387,7 +407,7 @@ float3 BackBuf_to_rec709(float3 bb) {
 	#endif
 	
 	#ifdef BT2020_PQ
-		return PQToLinear(bb);
+		return bt_2020_to_rec(PQToLinear(bb));
 	#endif
 }
 
@@ -401,7 +421,7 @@ float3 rec709_to_BackBuf(float3 bb) {
 	#endif
 	
 	#ifdef BT2020_PQ
-		return LinearToPQ(bb);
+		return LinearToPQ(rec_to_bt_2020(bb));
 	#endif
 }
 

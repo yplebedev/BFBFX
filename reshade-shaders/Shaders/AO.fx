@@ -102,7 +102,7 @@ float3 linear_to_display(float3 lin) {
 }
 
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
-	float AO = tex2D(sDenoised0, uv).r;
+	float AO = tex2D(sDenoised1, uv).r;
 		
 	if (debug) {
 		output = AO.rrr;
@@ -122,7 +122,6 @@ technique SSAO<ui_label = "BFBFX: SSAO";> {
 	pass Denoise { PixelShader = denoise_1; VertexShader = PostProcessVS; RenderTarget = tDenoised1; }
 	pass Denoise { PixelShader = denoise_2; VertexShader = PostProcessVS; RenderTarget = tDenoised0; }
 	pass Denoise { PixelShader = denoise_1; VertexShader = PostProcessVS; RenderTarget = tDenoised1; }
-	pass Denoise { PixelShader = denoise_0; VertexShader = PostProcessVS; RenderTarget = tDenoised0; }
 	
 	pass Blend { PixelShader = blend; VertexShader = PostProcessVS; }
 	pass TemporalLoop { PixelShader = copy_ao; VertexShader = PostProcessVS; RenderTarget = tAOhistory; }

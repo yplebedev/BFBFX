@@ -1,3 +1,4 @@
+#define GI_SHADER
 #define WHITEPOINT 15
 #include "OpenRSF.fxh"
 #include "random.fxh"
@@ -131,20 +132,28 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : S
 uniform bool debug = false;
 uniform float intensity = 10.;
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
-	float4 gi = tex2Dfetch(sGI, vpos.xy);
+	float4 gi = tex2Dfetch(sDenoised1g, vpos.xy);
 	float3 image = tex2D(ReShade::BackBuffer, uv).rgb;
-	output = debug ? float4(gi.rgb * 10.0 + gi.a * 0.1, 1.0) : float4(getAlbedo(uv) * intensity * gi.rgb + image * gi.a, 1.0);
+	output = debug ? float4(gi.rgb * 20.0 + gi.a * 0.1, 1.0) : float4(getAlbedo(uv) * intensity * gi.rgb + image * gi.a, 1.0);
 }
 
 technique GI<ui_label = "BFBFX: SSGI";> {
 	pass Radiance { VertexShader = PostProcessVS; PixelShader = radiance; RenderTarget = tRadiance; }
+	
 	pass Reset { PixelShader = reset; VertexShader = PostProcessVS; RenderTarget = tAccumLength; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN;  }
+	
 	pass Main { VertexShader = PostProcessVS; PixelShader = main; RenderTarget = tGI; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_0; RenderTarget = tDenoised0g; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_1; RenderTarget = tDenoised1g; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_2; RenderTarget = tDenoised0g; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_1; RenderTarget = tDenoised1g; }
+	
+	
+	
 	pass Increment { PixelShader = increment; VertexShader = PostProcessVS; BlendEnable = true; BlendOp = ADD; SrcBlend = ONE; DestBlend = ONE; RenderTarget = tAccumLength; }
 	pass Clamp { PixelShader = clamp_accum; VertexShader = PostProcessVS; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN; RenderTarget = tAccumLength; }
 	
-	
-	pass Display { VertexShader = PostProcessVS; PixelShader = blend; }
+	pass Blend { VertexShader = PostProcessVS; PixelShader = blend; }
 	
 	
 	pass TemporalLoop { PixelShader = copy_gi; VertexShader = PostProcessVS; RenderTarget = tGIhistory; }
