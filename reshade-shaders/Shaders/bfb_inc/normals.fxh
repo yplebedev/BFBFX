@@ -66,7 +66,7 @@ float2 TexNormalsPS(PS_INPUTS) : SV_Target
 {
 	float3 rawN = tex2D(sTempN0, xy).xyz;
 	
-	float3 smoothN = tex2D(ORSFShared::sSmoothN, xy).xyz;
+	float3 smoothN = UVtoOCT(tex2D(ORSFShared::sSmoothN, xy).xy);
 	float3 finalN = dot(smoothN, rawN) > 0.83 ? smoothN : rawN;
 	
 	

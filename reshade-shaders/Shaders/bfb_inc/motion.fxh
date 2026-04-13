@@ -998,7 +998,9 @@ static const int2 off5[5] = { int2(0,0), int2(0,2), int2(2,0), int2(2,2), int2(1
 		//doc = length(MV.xy - backV) < 0.25 * (length(MV.xy) + 1.0);\
 		doc = rcp(length(MV.xy - backV) / length(MV.xy) + 1.0);
 		doc = all(abs(MV.xy) < 1.0) ? 1.0 : doc; 
-		doc = doc > 0.9;
+		
+		const float threshold = 0.8;
+		doc = doc > threshold;
 		
 		MV.xy /= 1.0 + _SUBPIXEL_FLOW;
 		mv = any(abs(MV.xy) > 0.0001) ? MV.xy / RES : 0.0;

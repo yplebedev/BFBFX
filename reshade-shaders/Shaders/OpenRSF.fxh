@@ -425,6 +425,10 @@ float3 rec709_to_BackBuf(float3 bb) {
 	#endif
 }
 
+float luminance_from_rec709(float3 c) {
+	return dot(c, float3(0.2126, 0.7152, 0.0722));
+}
+
 // Directly from https://bottosson.github.io/posts/oklab/
 #define cbrtf(x) pow(x, 0.33333333)
 

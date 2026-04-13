@@ -32,9 +32,21 @@
 
 
 #include "motion.fxh"
+float min3x3(sampler input, float2 uv) {
+	float min_found = 1.0;
+	for (int deltaX = -1; deltaX <= 1; deltaX++) {
+		for (int deltaY = -1; deltaY <= 1; deltaY++) {
+			float2 offset = ReShade::PixelSize * float2(deltaX, deltaY);
+			float curr_sample = tex2Dlod(input, float4(uv + offset, 0., 0.)).r;
+			min_found = min(min_found, curr_sample);
+		}
+	}
+	return min_found;
+}
+
 void copyToORSF(PS_INPUTS, out float4 mv : SV_Target0) {
 	mv.rg = tex2D(sMV, xy).rg;
-	mv.b = tex2D(sDOC, xy).r;
+	mv.b = min3x3(sDOC, xy);
 }
 
 #include "normals.fxh"

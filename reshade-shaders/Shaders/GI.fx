@@ -24,7 +24,6 @@ float3 linear_to_display(float3 lin) {
 texture tRadiance { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 9; };
 sampler sRadiance { Texture = tRadiance; };
 
-
 void compute_gi(inout float AO, inout float3 GI, float4 vpos, float2 uv) {
 	float depth = getDepth(uv);
 	if (depth > 0.99) return;
@@ -118,35 +117,52 @@ void radiance(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 output
 	output = from_image * gi. a + from_history;
 }
 
-void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
+void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0, out float luma_sq : SV_Target1) {
 	float3 GI = 0.;
 	float AO = 1.;
 	compute_gi(AO, GI, vpos, uv);
+	GI *= 32.0;
 	
 	float3 mv = getMotion(uv);
 	float4 history = tex2D(sGIhistory, uv + mv.xy);
 	
-	output = lerp(history, float4(GI, AO), rcp(1. + tex2D(sAccumLength, uv).r));
+	float weight = rcp(1. + tex2D(sAccumLength, uv).r);
+	output = lerp(history, float4(GI, AO), weight);
+	
+	const float luminance = luminance_from_rec709(GI.rgb);
+	luma_sq = lerp(tex2D(sLumaSquaredHistory, uv + mv.xy).r, luminance * luminance, weight);
+}
+
+void comp_variance(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
+	float accum_frames = tex2D(sAccumLength, uv).r;
+	float LOD = max(0., 5. - accum_frames);
+	
+	float luminance = luminance_from_rec709(tex2Dlod(sGI, float4(uv, 0., LOD)).rgb);
+	float luminance_sq = tex2Dlod(sLumaSquared, float4(uv, 0., LOD)).r;
+	
+	output = max(0., luminance_sq - luminance * luminance) / (1. + accum_frames); //
 }
 
 uniform bool debug = false;
-uniform float intensity = 10.;
+uniform float intensity = 0.01;
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
 	float4 gi = tex2Dfetch(sDenoised1g, vpos.xy);
 	float3 image = tex2D(ReShade::BackBuffer, uv).rgb;
-	output = debug ? float4(gi.rgb * 20.0 + gi.a * 0.1, 1.0) : float4(getAlbedo(uv) * intensity * gi.rgb + image * gi.a, 1.0);
+	output = debug ? float4(gi.rgb + gi.a * 0.1, 1.0) : float4(getAlbedo(uv) * intensity * gi.rgb + image * gi.a, 1.0);
 }
 
 technique GI<ui_label = "BFBFX: SSGI";> {
 	pass Radiance { VertexShader = PostProcessVS; PixelShader = radiance; RenderTarget = tRadiance; }
 	
 	pass Reset { PixelShader = reset; VertexShader = PostProcessVS; RenderTarget = tAccumLength; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN;  }
+	pass SVGFBlocker { PixelShader = pls_dont_guide_i_am_noisy; VertexShader = PostProcessVS; RenderTarget = tGuide; }
 	
-	pass Main { VertexShader = PostProcessVS; PixelShader = main; RenderTarget = tGI; }
-	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_0; RenderTarget = tDenoised0g; }
-	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_1; RenderTarget = tDenoised1g; }
-	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_2; RenderTarget = tDenoised0g; }
-	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_1; RenderTarget = tDenoised1g; }
+	pass Main { VertexShader = PostProcessVS; PixelShader = main; RenderTarget0 = tGI; RenderTarget1 = tLumaSquared; }
+	pass ComputeVariance { VertexShader = PostProcessVS; PixelShader = comp_variance; RenderTarget0 = tVariance; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_0; RenderTarget0 = tDenoised0g; RenderTarget1 = tVarianceS; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_1; RenderTarget0 = tDenoised1g; RenderTarget1 = tVariance; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_2; RenderTarget = tDenoised0g; RenderTarget1 = tVarianceS; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_3; RenderTarget = tDenoised1g; RenderTarget1 = tVariance; }
 	
 	
 	
@@ -156,5 +172,5 @@ technique GI<ui_label = "BFBFX: SSGI";> {
 	pass Blend { VertexShader = PostProcessVS; PixelShader = blend; }
 	
 	
-	pass TemporalLoop { PixelShader = copy_gi; VertexShader = PostProcessVS; RenderTarget = tGIhistory; }
+	pass TemporalLoop { PixelShader = copy_gi; VertexShader = PostProcessVS; RenderTarget0 = tGIhistory; RenderTarget1 = tLumaSquaredHistory; }
 }

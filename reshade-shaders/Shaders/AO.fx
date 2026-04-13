@@ -86,10 +86,8 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 output : S
 	compute_ao(AO, vpos, uv);
 	
 	float3 motion = getMotion(uv);
-	float2 minmax = minmax_search(sAOhistory, uv + motion.xy);
 	
 	float history = tex2D(sAOhistory, uv + motion.xy).r;
-	history = clamp(history, minmax.x, minmax.y);
 	output = lerp(history, AO, rcp(1. + tex2D(sAccumLength, uv).r));
 }
 
