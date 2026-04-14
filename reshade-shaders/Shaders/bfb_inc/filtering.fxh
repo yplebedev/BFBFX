@@ -235,18 +235,24 @@ float4 denoise_wide(sampler source, float2 uv) {
 }
 
 
-
+// If anyone ever finds the code below some 10-so years down the line, I will immediatly get fired. 
 texture tGuide { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
 sampler sGuide { Texture = tGuide; };
 void pls_dont_guide_i_am_noisy(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
 	output = tex2D(sAccumLength, uv).x > 4.0 ? 1. : 0.;
 }
 
+float min_guide(float2 uv) {
+	float min_v = 128.0;
+	loop_3x3(min_v = min(min_v, tex2Doffset(sGuide, uv, int2(dx, dy)).x););
+	
+	return min_v;
+}
 
 void denoise_0(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0, out float variance : SV_Target1) {
 	variance = blur3x3_1(sVariance, uv, 1.0);
 
-	if (tex2D(sGuide, uv).x < 0.5) {
+	if (min_guide(uv).x < 0.5) {
 		denoised = denoise_wide(sGI, uv);
 	} else {
 		denoised = denoise(sGI, sVariance, uv, 1, true, variance);
