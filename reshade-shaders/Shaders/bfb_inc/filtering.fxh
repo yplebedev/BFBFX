@@ -193,6 +193,13 @@ float4 tex2DoffsetLOD(sampler source, float2 uv, int2 offset, float LOD) {
 	return tex2Dlod(source, float4(uv + offset * ReShade::PixelSize, 0., LOD));
 }
 
+// If anyone ever finds the code below some 10-so years down the line, I will immediatly get fired. 
+texture tGuide { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
+sampler sGuide { Texture = tGuide; };
+void pls_dont_guide_i_am_noisy(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
+	output = tex2D(sAccumLength, uv).x > 4.0 ? 1. : 0.;
+}
+
 float4 denoise(sampler source, sampler variance_source, float2 uv, uint scale, bool self_guide, inout float variance = 1.0) {
 	float4 accum = 0.;
 	float weights[9];
@@ -232,14 +239,6 @@ float4 denoise_wide(sampler source, float2 uv) {
 			 cumulation += weights[get_slice_wide(dx, dy)]; )
 	
 	return accum / cumulation;
-}
-
-
-// If anyone ever finds the code below some 10-so years down the line, I will immediatly get fired. 
-texture tGuide { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
-sampler sGuide { Texture = tGuide; };
-void pls_dont_guide_i_am_noisy(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
-	output = tex2D(sAccumLength, uv).x > 4.0 ? 1. : 0.;
 }
 
 float min_guide(float2 uv) {

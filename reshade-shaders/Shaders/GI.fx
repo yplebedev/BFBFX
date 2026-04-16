@@ -140,7 +140,8 @@ void comp_variance(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float ou
 	float luminance = luminance_from_rec709(tex2Dlod(sGI, float4(uv, 0., LOD)).rgb);
 	float luminance_sq = tex2Dlod(sLumaSquared, float4(uv, 0., LOD)).r;
 	
-	output = max(0., luminance_sq - luminance * luminance) / (1. + accum_frames); //
+	float variance = luminance_sq - luminance * luminance;
+	output = max(0., max(variance, luminance * luminance * 0.01)) / (1. + accum_frames); //
 }
 
 uniform bool debug = false;
