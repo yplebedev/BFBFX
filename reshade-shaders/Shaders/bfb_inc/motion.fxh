@@ -999,11 +999,14 @@ static const int2 off5[5] = { int2(0,0), int2(0,2), int2(2,0), int2(2,2), int2(1
 		doc = rcp(length(MV.xy - backV) / length(MV.xy) + 1.0);
 		doc = all(abs(MV.xy) < 1.0) ? 1.0 : doc; 
 		
-		const float threshold = 0.8;
-		doc = doc > threshold;
-		
 		MV.xy /= 1.0 + _SUBPIXEL_FLOW;
 		mv = any(abs(MV.xy) > 0.0001) ? MV.xy / RES : 0.0;
+		
+		const float threshold = 0.8;
+		float normal_reject_weight = dot(normalize(UVtoOCT(tex2D(ORSFShared::sGeoN, xy).xy)), normalize(UVtoOCT(tex2D(ORSFShared::sGeoN, xy + mv).xy))) > 0.3 ? 1.0 : 0.0;
+		doc *= normal_reject_weight;
+		
+		doc = doc > threshold;
 	}
 	
 	float3 BlendPS(PS_INPUTS) : SV_Target

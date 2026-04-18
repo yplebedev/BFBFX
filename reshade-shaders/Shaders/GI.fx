@@ -124,6 +124,7 @@ void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : S
 	GI *= 32.0;
 	
 	float3 mv = getMotion(uv);
+	
 	float4 history = tex2D(sGIhistory, uv + mv.xy);
 	
 	float weight = rcp(1. + tex2D(sAccumLength, uv).r);

@@ -61,7 +61,8 @@ bool onscreen(float2 uv) {
 }
 
 void reset(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float accumulation : SV_Target0) {
-	float3 motion = getMotion(uv);// 							   keep      restart
+	float3 motion = getMotion(uv);
+	
 	accumulation = ((motion.z > 0.8) && onscreen(uv + motion.xy)) ? 100000. : 0.;
 }
 
