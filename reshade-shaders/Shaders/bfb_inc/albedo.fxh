@@ -115,4 +115,8 @@ void albedo(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 albedo :
 	float3 source = rec709_to_ok(BackBuf_to_rec709(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb));
 	albedo = lerp(source, float3(lerp(1.0 - tex2Dfetch(sFinalBlurred, vpos.xy).r, 0.7, 0.2), source.gb), 0.5);
 	albedo = ok_to_rec709(albedo);	
+	
+	#ifdef HDR_ON
+		albedo = saturate(ok_to_rec709(source)); // because there are zero fucking guarantees
+	#endif
 }

@@ -46,7 +46,10 @@ float GetDepth(float2 xy)
 }
 
 
-#define FOV (1.0 * 0.0174533 * 70.0)
+#ifndef FOV
+	#define FOV (1.0 * 0.0174533 * 70.0)
+#endif
+
 #define fl rcp(tan(0.5 * FOV))
 
 float3 GetEyePos(float2 xy, float z)

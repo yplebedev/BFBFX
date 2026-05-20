@@ -133,4 +133,5 @@ technique ZenWork<ui_label = "BFBFX: ZenWork";> {
 	
 	// Depth
 	pass {	PASS1(depth, ORSFShared::tDepth); }
+	pass {	PASS1(save_n, tOldN); }
 }

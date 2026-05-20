@@ -7,7 +7,7 @@ uniform bool debug<ui_label = "Debug";> = false;
 
 // Note; these *can* be uniforms. However, its easier to fuck these up in the GUI
 // compared to finding good values. I know you'll poke these if you *really* want to.
-static const float thickness = 4.0;
+uniform float thickness = 4.0;
 static const float radius = 1.5; // Fuck it, fulscreen step
 static const uint directions = 1;
 static const uint steps = 4;
@@ -104,6 +104,11 @@ void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : 
 		
 	if (debug) {
 		output = AO.rrr;
+		
+		// blinds me in CP2077, this makes it more reasonable. probably wrong!
+		#ifdef HDR_ON
+			output = output * 0.5;	
+		#endif
 	} else {
 		output = tex2Dfetch(ReShade::BackBuffer, vpos.xy); 
 		output.rgb = linear_to_display(display_to_linear(output.rgb) * pow(AO, strength));

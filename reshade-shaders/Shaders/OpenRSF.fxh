@@ -299,16 +299,33 @@ float4 blur7x7_4(sampler input, float2 uv, float scale) {
 }                                          
 
 
-#if BUFFER_COLOR_SPACE == 0
-	#define C_SRGB
+#if BUFFER_COLOR_SPACE == 0 // unknown
+	#define C_SRGB 1
+	#ifdef HDR_ON
+		#undef HDR_ON
+	#endif
 #elif BUFFER_COLOR_SPACE == 1
-	#define HDR_ON
-	#define C_SCRGB
-#elif BUFFER_COLOR_SPACE == 2
-	#define BT2020_PQ
-	#define HDR_ON
-#else
 	#define C_SRGB
+	#ifdef HDR_ON
+		#undef HDR_ON
+	#endif
+#elif BUFFER_COLOR_SPACE == 2
+	#ifndef HDR_ON
+		#define HDR_ON
+	#endif
+	#define C_SCRGB 1
+#elif BUFFER_COLOR_SPACE == 3	
+	#define BT2020_PQ
+	#ifndef HDR_ON
+		#define HDR_ON
+	#endif
+#else // default to sRGB, but warn!
+	#define C_SRGB
+	#ifdef HDR_ON
+		#undef HDR_ON
+	#endif
+	
+	#warning "Unknown color space detected. ORSF and it's dependents may behave incorrectly."
 #endif
 
 float3 bt_2020_to_rec(float3 c) {
@@ -557,7 +574,7 @@ float3 cg_to_xyz(float3 cg) {
 static const float TONEMAP_EPS = 0.0001;
 
 float3 inverseTonemap(float3 c) {
-	#ifdef HDR
+	#ifdef HDR_ON
 		return c;
 	#else
 		float HDR_RED = 1.0 + rcp(WHITEPOINT);
@@ -568,7 +585,7 @@ float3 inverseTonemap(float3 c) {
 }
 
 float3 tonemap(float3 c) {
-	#ifdef HDR
+	#ifdef HDR_ON
 		return c;
 	#else
 		float HDR_RED = 1.0 + rcp(WHITEPOINT);

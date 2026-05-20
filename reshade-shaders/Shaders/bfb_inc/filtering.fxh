@@ -235,24 +235,17 @@ float4 denoise_wide(sampler source, float2 uv) {
 	
 	loop_7x7(weights[get_slice_wide(dx, dy)] = GAUSS_7[get_slice_wide(dx, dy)];
 				 weights[get_slice_wide(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy))); )
-	loop_7x7(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy), (3. - tex2D(sAccumLength, uv).x));
+	loop_7x7(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy), 0.);
 			 accum += val * weights[get_slice_wide(dx, dy)];
 			 cumulation += weights[get_slice_wide(dx, dy)]; )
 	
 	return accum / cumulation;
 }
 
-float min_guide(float2 uv) {
-	float min_v = 128.0;
-	loop_3x3(min_v = min(min_v, tex2Doffset(sGuide, uv, int2(dx, dy)).x););
-	
-	return min_v;
-}
-
 void denoise_0(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0, out float variance : SV_Target1) {
 	variance = blur3x3_1(sVariance, uv, 1.0);
 
-	if (min_guide(uv).x < 0.5) {
+	if (tex2D(sGuide, uv).x < 0.5) {
 		denoised = denoise_wide(sGI, uv);
 	} else {
 		denoised = denoise(sGI, sVariance, uv, 1, true, variance);

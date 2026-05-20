@@ -7,7 +7,7 @@
 static const float thickness = 4.0;
 static const float radius = 1.5;
 static const uint directions = 1;
-static const uint steps = 4;
+static const uint steps = 40;
 
 float2 sort(float2 of) {
 	return of.x > of.y ? of.yx : of.xy;
@@ -61,8 +61,11 @@ void compute_gi(inout float AO, inout float3 GI, float4 vpos, float2 uv) {
 				if (step_depth > 0.99) continue;
 				
 				float3 normal = getNormal(step_uv);
-				float LOD = 0.;//.1 * distance(step_uv * BUFFER_SCREEN_SIZE, uv * BUFFER_SCREEN_SIZE) - 10.0;
+				float LOD = distance(step_uv * BUFFER_SCREEN_SIZE, uv * BUFFER_SCREEN_SIZE) * 0.125;
 				float3 radiance = tex2Dlod(sRadiance, float4(step_uv, 0., LOD)).rgb;
+				#ifdef BT2020_PQ
+					radiance *= 0.2;
+				#endif
 				
 				float3 front = getViewPos(step_uv, step_depth);
 				float3 delta_front = normalize(front - view_pos);
@@ -103,7 +106,7 @@ void compute_gi(inout float AO, inout float3 GI, float4 vpos, float2 uv) {
 	AO /= directions * 32.;
 	AO = 1.0 - AO;
 	
-	GI /= directions * steps * 32.;
+	GI /= directions * steps * 4.;
 }
 
 
@@ -112,9 +115,18 @@ void radiance(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 output
 	
 	float3 mv = getMotion(uv);
 	float4 gi = tex2D(sDenoised1g, uv + mv.xy);
+	gi.rgb = rec709_to_xyz(gi.rgb);
+	gi.rgb = xyz_to_cg(gi.rgb);
+	
+	float3 albedo = getAlbedo(uv);
+	albedo.rgb = rec709_to_xyz(albedo.rgb);
+	albedo.rgb = xyz_to_cg(albedo.rgb);
+	
 	float3 from_history = gi.rgb * mv.z * getAlbedo(uv);
 	
 	output = from_image * gi. a + from_history;
+	output = cg_to_xyz(output);
+	output = xyz_to_rec709(output);
 }
 
 void main(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0, out float luma_sq : SV_Target1) {
@@ -149,8 +161,20 @@ uniform bool debug = false;
 uniform float intensity = 0.01;
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
 	float4 gi = tex2Dfetch(sDenoised1g, vpos.xy);
+	gi.rgb = rec709_to_xyz(gi.rgb);
+	gi.rgb = xyz_to_cg(gi.rgb);
+	
+	float3 albedo = getAlbedo(uv);
+	albedo.rgb = rec709_to_xyz(albedo.rgb);
+	albedo.rgb = xyz_to_cg(albedo.rgb);
+	
 	float3 image = tex2D(ReShade::BackBuffer, uv).rgb;
-	output = debug ? float4(gi.rgb + gi.a * 0.1, 1.0) : float4(getAlbedo(uv) * intensity * gi.rgb + image * gi.a, 1.0);
+	image.rgb = rec709_to_xyz(image.rgb);
+	image.rgb = xyz_to_cg(image.rgb);
+	
+	output = debug ? float4(gi.rgb + gi.a * 0.1, 1.0) : float4(albedo * intensity * gi.rgb + image * gi.a, 1.0);
+	output.rgb = cg_to_xyz(output.rgb);
+	output.rgb = xyz_to_rec709(output.rgb);
 }
 
 technique GI<ui_label = "BFBFX: SSGI";> {
@@ -165,7 +189,6 @@ technique GI<ui_label = "BFBFX: SSGI";> {
 	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_1; RenderTarget0 = tDenoised1g; RenderTarget1 = tVariance; }
 	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_2; RenderTarget = tDenoised0g; RenderTarget1 = tVarianceS; }
 	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_3; RenderTarget = tDenoised1g; RenderTarget1 = tVariance; }
-	
 	
 	
 	pass Increment { PixelShader = increment; VertexShader = PostProcessVS; BlendEnable = true; BlendOp = ADD; SrcBlend = ONE; DestBlend = ONE; RenderTarget = tAccumLength; }

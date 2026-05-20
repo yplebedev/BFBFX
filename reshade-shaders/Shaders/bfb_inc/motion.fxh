@@ -971,7 +971,11 @@ static const int2 off5[5] = { int2(0,0), int2(0,2), int2(2,0), int2(2,2), int2(1
 		return acc / accw;
 	}
 	
-	
+	texture tOldN { Format = RGBA8; Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; };
+	sampler sOldN { Texture = tOldN; };
+	void save_n(PS_INPUTS, out float4 n : SV_Target0) {
+		n = tex2Dlod(ORSFShared::sGeoN, float4(xy, 0., 0.));
+	}
 	
 	void SavePS(PS_INPUTS, out float2 mv : SV_Target0, out float doc : SV_Target1)
 	{
@@ -1003,8 +1007,8 @@ static const int2 off5[5] = { int2(0,0), int2(0,2), int2(2,0), int2(2,2), int2(1
 		mv = any(abs(MV.xy) > 0.0001) ? MV.xy / RES : 0.0;
 		
 		const float threshold = 0.8;
-		float normal_reject_weight = dot(normalize(UVtoOCT(tex2D(ORSFShared::sGeoN, xy).xy)), normalize(UVtoOCT(tex2D(ORSFShared::sGeoN, xy + mv).xy))) > 0.3 ? 1.0 : 0.0;
-		doc *= normal_reject_weight;
+		float normal_reject_weight = dot(normalize(UVtoOCT(tex2D(ORSFShared::sGeoN, xy).xy)), normalize(UVtoOCT(tex2D(sOldN, xy + mv).xy))) > 0.3 ? 1.0 : 0.0;
+		doc = doc * normal_reject_weight;
 		
 		doc = doc > threshold;
 	}
