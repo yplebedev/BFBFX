@@ -24,6 +24,7 @@ float3 linear_to_display(float3 lin) {
 texture tRadiance { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 9; };
 sampler sRadiance { Texture = tRadiance; };
 
+
 void compute_gi(inout float AO, inout float3 GI, float4 vpos, float2 uv) {
 	float depth = getDepth(uv);
 	if (depth > 0.99) return;
@@ -61,11 +62,7 @@ void compute_gi(inout float AO, inout float3 GI, float4 vpos, float2 uv) {
 				if (step_depth > 0.99) continue;
 				
 				float3 normal = getNormal(step_uv);
-				float LOD = distance(step_uv * BUFFER_SCREEN_SIZE, uv * BUFFER_SCREEN_SIZE) * 0.125;
-				float3 radiance = tex2Dlod(sRadiance, float4(step_uv, 0., LOD)).rgb;
-				#ifdef BT2020_PQ
-					radiance *= 0.2;
-				#endif
+				float3 radiance = tex2Dlod(sRadiance, float4(step_uv, 0., 0.)).rgb;
 				
 				float3 front = getViewPos(step_uv, step_depth);
 				float3 delta_front = normalize(front - view_pos);
@@ -169,12 +166,16 @@ void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : 
 	albedo.rgb = xyz_to_cg(albedo.rgb);
 	
 	float3 image = tex2D(ReShade::BackBuffer, uv).rgb;
+	image.rgb = BackBuf_to_rec709(image.rgb);
+	image.rgb = inverseTonemap(image.rgb);
 	image.rgb = rec709_to_xyz(image.rgb);
 	image.rgb = xyz_to_cg(image.rgb);
 	
 	output = debug ? float4(gi.rgb + gi.a * 0.1, 1.0) : float4(albedo * intensity * gi.rgb + image * gi.a, 1.0);
+	if (debug) return;
 	output.rgb = cg_to_xyz(output.rgb);
 	output.rgb = xyz_to_rec709(output.rgb);
+	output.rgb = linear_to_display(output.rgb);
 }
 
 technique GI<ui_label = "BFBFX: SSGI";> {

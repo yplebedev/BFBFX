@@ -64,7 +64,15 @@ texture tBlur5 { Width = BUFFER_WIDTH / 32; Height = BUFFER_HEIGHT / 32; Format 
 sampler sBlur5 { Texture = tBlur5; };
 
 void prep_luma(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float res : SV_Target0) {
-	res = rec709_to_ok(BackBuf_to_rec709(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb)).r;
+	#ifndef HDR_ON
+		res = rec709_to_ok(BackBuf_to_rec709(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb)).r;
+		
+	#else
+		float3 hdr = BackBuf_to_rec709(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb);
+		float3 sdr = hdr / (1. + hdr);
+		
+		res = luminance_from_rec709(sdr);
+	#endif
 }
 
 void blur_down0(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float res : SV_Target0) {
@@ -112,11 +120,23 @@ void blur_up4(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float res : S
 }
 
 void albedo(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 albedo : SV_Target0) {
-	float3 source = rec709_to_ok(BackBuf_to_rec709(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb));
-	albedo = lerp(source, float3(lerp(1.0 - tex2Dfetch(sFinalBlurred, vpos.xy).r, 0.7, 0.2), source.gb), 0.5);
-	albedo = ok_to_rec709(albedo);	
-	
-	#ifdef HDR_ON
-		albedo = saturate(ok_to_rec709(source)); // because there are zero fucking guarantees
+	#ifndef HDR_ON
+		float3 source = rec709_to_ok(
+			BackBuf_to_rec709(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb)
+		);
+		albedo = lerp(source, float3(lerp(1.0 - tex2Dfetch(sFinalBlurred, vpos.xy).r, 0.7, 0.2), source.gb), 0.3);
+		albedo.gb = clamp(albedo.gb * 1.2, -1., 1.);
+		albedo = ok_to_rec709(albedo);
+	#else
+		float3 source = BackBuf_to_rec709(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb);
+		float3 tonemapped = source / (source + 1.0.xxx);
+		
+		float luminance = luminance_from_rec709(tonemapped);
+		float3 chroma_off = tonemapped - luminance.xxx;
+		
+		luminance = lerp(luminance, 1.0 - tex2Dfetch(sFinalBlurred, vpos.xy).r, 0.5);
+		albedo = luminance + chroma_off; // ok, works well enough
 	#endif
+	
+	albedo = saturate(albedo);
 }
