@@ -4,7 +4,7 @@
 #include "random.fxh"
 #include "filtering.fxh"
 
-static const float thickness = 4.0;
+static const float thickness = 40.0;
 static const float radius = 1.5;
 static const uint directions = 1;
 static const uint steps = 40;
@@ -18,7 +18,11 @@ float3 display_to_linear(float3 display) {
 }
 
 float3 linear_to_display(float3 lin) {
-	return rec709_to_BackBuf(tonemap(lin));
+	float3 temp = tonemap(lin);
+	#ifndef HDR_ON
+		temp = saturate(temp);
+	#endif
+	return rec709_to_BackBuf(temp);
 }
 
 texture tRadiance { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 9; };
@@ -151,8 +155,9 @@ void comp_variance(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float ou
 	float luminance_sq = tex2Dlod(sLumaSquared, float4(uv, 0., LOD)).r;
 	
 	float variance = luminance_sq - luminance * luminance;
-	output = max(0., max(variance, luminance * luminance * 0.01)) / (1. + accum_frames); //
+	output = max(0., max(variance, luminance * luminance * 0.01)) / (1. + accum_frames);
 }
+
 
 uniform bool debug = false;
 uniform float intensity = 0.01;
@@ -166,24 +171,29 @@ void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : 
 	albedo.rgb = xyz_to_cg(albedo.rgb);
 	
 	float3 image = tex2D(ReShade::BackBuffer, uv).rgb;
-	image.rgb = BackBuf_to_rec709(image.rgb);
-	image.rgb = inverseTonemap(image.rgb);
+	image.rgb = display_to_linear(image.rgb);
 	image.rgb = rec709_to_xyz(image.rgb);
 	image.rgb = xyz_to_cg(image.rgb);
 	
 	output = debug ? float4(gi.rgb + gi.a * 0.1, 1.0) : float4(albedo * intensity * gi.rgb + image * gi.a, 1.0);
 	if (debug) return;
+	
 	output.rgb = cg_to_xyz(output.rgb);
 	output.rgb = xyz_to_rec709(output.rgb);
+	
+	// sanitize!
+	output.rgb = clamp(output.rgb, 0., HDR10_max_nits);
 	output.rgb = linear_to_display(output.rgb);
+	
+	if ((output.r != output.r) || (output.b != output.b) || (output.g != output.g)) {
+		output.rgb = float3(1., 0., 1.);
+	}
 }
 
 technique GI<ui_label = "BFBFX: SSGI";> {
 	pass Radiance { VertexShader = PostProcessVS; PixelShader = radiance; RenderTarget = tRadiance; }
 	
 	pass Reset { PixelShader = reset; VertexShader = PostProcessVS; RenderTarget = tAccumLength; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN;  }
-	pass SVGFBlocker { PixelShader = pls_dont_guide_i_am_noisy; VertexShader = PostProcessVS; RenderTarget = tGuide; }
-	
 	pass Main { VertexShader = PostProcessVS; PixelShader = main; RenderTarget0 = tGI; RenderTarget1 = tLumaSquared; }
 	pass ComputeVariance { VertexShader = PostProcessVS; PixelShader = comp_variance; RenderTarget0 = tVariance; }
 	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_0; RenderTarget0 = tDenoised0g; RenderTarget1 = tVarianceS; }

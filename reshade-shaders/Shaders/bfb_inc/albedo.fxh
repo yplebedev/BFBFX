@@ -69,7 +69,7 @@ void prep_luma(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float res : 
 		
 	#else
 		float3 hdr = BackBuf_to_rec709(tex2Dfetch(ReShade::BackBuffer, vpos.xy).rgb);
-		float3 sdr = hdr / (1. + hdr);
+		float3 sdr = hdr / (1.0.xxx + hdr);
 		
 		res = luminance_from_rec709(sdr);
 	#endif
@@ -136,6 +136,8 @@ void albedo(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float3 albedo :
 		
 		luminance = lerp(luminance, 1.0 - tex2Dfetch(sFinalBlurred, vpos.xy).r, 0.5);
 		albedo = luminance + chroma_off; // ok, works well enough
+		
+		albedo = saturate(albedo);
 	#endif
 	
 	albedo = saturate(albedo);

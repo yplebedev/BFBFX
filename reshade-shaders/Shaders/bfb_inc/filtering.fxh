@@ -194,13 +194,6 @@ float4 tex2DoffsetLOD(sampler source, float2 uv, int2 offset, float LOD) {
 	return tex2Dlod(source, float4(uv + offset * ReShade::PixelSize, 0., LOD));
 }
 
-// If anyone ever finds the code below some 10-so years down the line, I will immediatly get fired. 
-texture tGuide { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R8; };
-sampler sGuide { Texture = tGuide; };
-void pls_dont_guide_i_am_noisy(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float output : SV_Target0) {
-	output = tex2D(sAccumLength, uv).x > 4.0 ? 1. : 0.;
-}
-
 float4 denoise(sampler source, sampler variance_source, float2 uv, uint scale, bool self_guide, inout float variance = 1.0) {
 	float4 accum = 0.;
 	float weights[9];
@@ -213,7 +206,8 @@ float4 denoise(sampler source, sampler variance_source, float2 uv, uint scale, b
 	float variance_accumulation = 0.;
 	loop_3x3(weights[get_slice(dx, dy)] = GAUSS_3[get_slice(dx, dy)];
 				 weights[get_slice(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy) * scale)); )
-	loop_3x3(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, (3. - tex2Dlod(sAccumLength, float4(uv, 0., 0.)).x));
+	//loop_3x3(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, (3. - tex2Dlod(sAccumLength, float4(uv, 0., 0.)).x));
+	loop_3x3(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, 0.);
 			 if (self_guide) weights[get_slice(dx, dy)] *= color_similarity(val.rgb, center_value.rgb, old_variance);
 			 accum += val * weights[get_slice(dx, dy)];
 			 cumulation += weights[get_slice(dx, dy)]; )
@@ -244,34 +238,21 @@ float4 denoise_wide(sampler source, float2 uv) {
 
 void denoise_0(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0, out float variance : SV_Target1) {
 	variance = blur3x3_1(sVariance, uv, 1.0);
-
-	if (tex2D(sGuide, uv).x < 0.5) {
-		denoised = denoise_wide(sGI, uv);
-	} else {
-		denoised = denoise(sGI, sVariance, uv, 1, true, variance);
-	}
+	denoised = denoise(sGI, sVariance, uv, 1, false, variance);
 }
 
 void denoise_1(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0, out float variance : SV_Target1) {
-	bool self_guide = tex2D(sGuide, uv).x > 0.5;
 	variance = tex2D(sVarianceS, uv).x;
-	
-	denoised = denoise(sDenoised0g, sVarianceS, uv, 2, self_guide, variance);
+	denoised = denoise(sDenoised0g, sVarianceS, uv, 2, true, variance);
 }
 
 void denoise_2(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0, out float variance : SV_Target1) {
-	bool self_guide = tex2D(sGuide, uv).x > 0.5;
 	variance = tex2D(sVariance, uv).x;
-	
-	
-	denoised = denoise(sDenoised1g, sVariance, uv, 4, self_guide, variance);
+	denoised = denoise(sDenoised1g, sVariance, uv, 4, true, variance);
 }
 
 void denoise_3(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0, out float variance : SV_Target1) {
-	bool self_guide = tex2D(sGuide, uv).x > 0.5;
 	variance = tex2D(sVarianceS, uv).x;
-	
-	
-	denoised = denoise(sDenoised0g, sVarianceS, uv, 8, self_guide, variance);
+	denoised = denoise(sDenoised0g, sVarianceS, uv, 8, true, variance);
 }
 #endif

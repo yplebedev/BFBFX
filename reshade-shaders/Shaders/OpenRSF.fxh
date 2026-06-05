@@ -53,8 +53,6 @@ static const float GAUSS_7[49] = {
 
 uniform float FOV<hidden = true;> = HALF_PI; // radians, vfov!!!
 
-uniform float PEAK_LUMINANCE<hidden=true;> = 1000.0/10000.0; // https://en.wikipedia.org/wiki/Perceptual_quantizer                                                                                                                                                      |__/             
-
 namespace ORSFShared {
 	texture tAlbedo { RES(1); Format = RGB10A2; };
 	sampler sAlbedo { Texture = tAlbedo; };
@@ -589,11 +587,11 @@ float3 tonemap(float3 c) {
 		return c;
 	#else
 		float HDR_RED = 1.0 + rcp(WHITEPOINT);
-		float l = dot(c, float3(0.2126, 0.7152,0.0722));
+		float l = dot(saturate(c), float3(0.2126, 0.7152,0.0722));
 		c /= l + TONEMAP_EPS;
 		
 		const float floor_val = 0.0000001;
-		return max(c * -l / (l - HDR_RED), floor_val);
+		return max(c * -l / (l - HDR_RED), TONEMAP_EPS);
 	#endif
 }
 
