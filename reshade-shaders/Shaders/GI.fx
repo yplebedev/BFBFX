@@ -162,7 +162,7 @@ void comp_variance(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float ou
 uniform bool debug = false;
 uniform float intensity = 0.01;
 void blend(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 output : SV_Target0) {
-	float4 gi = tex2Dfetch(sDenoised1g, vpos.xy);
+	float4 gi = tex2Dfetch(sDenoised0g, vpos.xy);
 	gi.rgb = rec709_to_xyz(gi.rgb);
 	gi.rgb = xyz_to_cg(gi.rgb);
 	
@@ -198,9 +198,9 @@ technique GI<ui_label = "BFBFX: SSGI";> {
 	pass ComputeVariance { VertexShader = PostProcessVS; PixelShader = comp_variance; RenderTarget0 = tVariance; }
 	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_0; RenderTarget0 = tDenoised0g; RenderTarget1 = tVarianceS; }
 	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_1; RenderTarget0 = tDenoised1g; RenderTarget1 = tVariance; }
-	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_2; RenderTarget = tDenoised0g; RenderTarget1 = tVarianceS; }
-	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_3; RenderTarget = tDenoised1g; RenderTarget1 = tVariance; }
-	
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_2; RenderTarget0 = tDenoised0g; RenderTarget1 = tVarianceS; }
+	pass Denoise { VertexShader = PostProcessVS; PixelShader = denoise_3; RenderTarget0 = tDenoised1g; RenderTarget1 = tVariance; }
+	pass HistoryFix { VertexShader = PostProcessVS; PixelShader = hist_fix; RenderTarget0 = tDenoised0g; }
 	
 	pass Increment { PixelShader = increment; VertexShader = PostProcessVS; BlendEnable = true; BlendOp = ADD; SrcBlend = ONE; DestBlend = ONE; RenderTarget = tAccumLength; }
 	pass Clamp { PixelShader = clamp_accum; VertexShader = PostProcessVS; BlendEnable = true; SrcBlend = ONE; DestBlend = ONE; BlendOp = MIN; RenderTarget = tAccumLength; }

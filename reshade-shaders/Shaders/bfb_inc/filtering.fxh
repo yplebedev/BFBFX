@@ -206,8 +206,8 @@ float4 denoise(sampler source, sampler variance_source, float2 uv, uint scale, b
 	float variance_accumulation = 0.;
 	loop_3x3(weights[get_slice(dx, dy)] = GAUSS_3[get_slice(dx, dy)];
 				 weights[get_slice(dx, dy)] *= normal_similarity(center_normal, getNormalOffset(uv, int2(dx, dy) * scale)); )
-	//loop_3x3(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, (3. - tex2Dlod(sAccumLength, float4(uv, 0., 0.)).x));
-	loop_3x3(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, 0.);
+	loop_3x3(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, self_guide ? 0. : (2. - tex2Dlod(sAccumLength, float4(uv, 0., 0.)).x));
+	//loop_3x3(float4 val = tex2DoffsetLOD(source, uv, int2(dx, dy) * scale, 0.);
 			 if (self_guide) weights[get_slice(dx, dy)] *= color_similarity(val.rgb, center_value.rgb, old_variance);
 			 accum += val * weights[get_slice(dx, dy)];
 			 cumulation += weights[get_slice(dx, dy)]; )
@@ -254,5 +254,13 @@ void denoise_2(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoi
 void denoise_3(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0, out float variance : SV_Target1) {
 	variance = tex2D(sVarianceS, uv).x;
 	denoised = denoise(sDenoised0g, sVarianceS, uv, 8, true, variance);
+}
+
+void hist_fix(float4 vpos : SV_Position, float2 uv : TEXCOORD, out float4 denoised : SV_Target0) {
+	if (tex2Dfetch(sAccumLength, vpos.xy).r < 4.) {
+		denoised = denoise_wide(sDenoised1g, uv);
+	} else {
+		denoised = tex2Dfetch(sDenoised1g, vpos.xy);
+	}
 }
 #endif
