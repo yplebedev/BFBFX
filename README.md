@@ -1,4 +1,4 @@
-# BFBFX: Dev Branch
+# BFBFX: Done.
 Mediocre GI, AO and ORSF implementation that alltogether took around a year of learning ReShade.
 
 
